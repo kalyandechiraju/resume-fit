@@ -20,6 +20,14 @@
 
 Resume Fit is an open-source Manifest V3 Chrome extension. It reads a PDF or DOCX resume, captures the job description in the current tab, and returns a focused match report in Chrome's side panel.
 
+<p align="center">
+  <a href="demo/out/resume-fit-demo.mp4">
+    <img src="demo/out/resume-fit-demo.gif" width="900" alt="Resume Fit product demo">
+  </a>
+</p>
+
+<p align="center"><a href="demo/out/resume-fit-demo.mp4">Open the full-quality demo</a></p>
+
 ## Install the extension
 
 1. Download `resume-fit-v0.3.1.zip` from the [latest release](https://github.com/kalyandechiraju/resume-fit/releases/latest).

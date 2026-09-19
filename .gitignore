@@ -18,6 +18,7 @@ node_modules/
 /extension/dist/
 /release/
 /demo/out/*
+!/demo/out/resume-fit-demo.gif
 !/demo/out/resume-fit-demo.mp4
 
 # misc
