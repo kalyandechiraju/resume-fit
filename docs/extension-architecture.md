@@ -18,9 +18,9 @@ The side panel owns the assessment:
 2. `resume.ts` parses a PDF or DOCX file locally. It stores extracted text, not the source file.
 3. The user saves a Vercel AI Gateway key for the current browser session.
 4. `analysis.ts` reports two real phases, calls TypeSafe's Jev evaluation model through Vercel AI Gateway, and builds the report from validated source spans.
-5. The report renders one match gauge and expandable requirement rows with exact evidence.
+5. The report renders one match gauge and four metric bars.
 
-Closing the panel aborts an in-flight request. The service worker never owns analysis state.
+Canceling analysis aborts the in-flight request. The service worker never owns analysis state.
 
 ## File ownership
 
@@ -36,13 +36,14 @@ extension/
 │   └── panel.ts        DOM events, workflow state, cancellation, and rendering
 ├── static/
 │   ├── assets/         mark, local fonts, and font licenses
+│   ├── THIRD_PARTY_NOTICES.txt
 │   ├── manifest.json
 │   └── sidepanel/
 ├── scripts/build.mjs
 └── test/
 ```
 
-The build bundles `background.ts` and `panel.ts`. It copies the manifest, side-panel document, local mark, local fonts, and font licenses into `extension/dist`.
+The build bundles `background.ts` and `panel.ts`. It copies the manifest, side-panel document, local assets, and third-party notices into `extension/dist`.
 
 ## Data model
 
@@ -50,12 +51,12 @@ The build bundles `background.ts` and `panel.ts`. It copies the manifest, side-p
 
 Capture and manual paste produce a bounded `JobConfirmed` value. The workflow state is a closed discriminated union. Full resume text, job text, and the Gateway key stay outside render state. A successful resume or job change hides an older report.
 
-`RequirementEvidence` is a discriminated union:
+`RequirementEvidence` is an internal discriminated union:
 
-- `missing` requires `resumeEvidence: null`.
-- `partial` and `clear` require an exact resume span.
+- `no-match` requires `resumeEvidence: null`.
+- `related`, `partial`, and `clear` require an exact resume span.
 
-The report builder validates every job and resume span against its source text. It rejects normalized duplicate requirements and contradictory evidence. TypeScript calculates coverage and the score.
+The report builder validates every job and resume span against its source text. It rejects normalized duplicate requirements and contradictory evidence. TypeScript calculates the four metric scores and weighted overall score. The public report contains only those scores.
 
 ## Storage and retention
 
@@ -76,9 +77,9 @@ Code performs the extraction and arithmetic:
 
 1. Code splits confirmed job text into bounded exact spans.
 2. TypeSafe Boolean questions decide whether each span is a concrete requirement.
-3. Independent Choice questions label surviving requirements as core or preferred.
+3. Independent Choice questions label surviving requirements as required or preferred.
 4. Code shortlists bounded resume spans for each requirement.
-5. TypeSafe Score questions judge each requirement and resume-span pair as no, partial, or clear support.
+5. TypeSafe Choice questions judge each requirement and resume-span pair as no, related, partial, or clear support.
 6. Code selects the strongest evidence, validates exact source membership, and calculates the report.
 
 Each request has a 15-second timeout and no automatic retries. A fetch boundary caps response bodies at 512 KB before AI SDK validates the typed answers. The extension does not log the key, documents, request body, or response body.
@@ -103,6 +104,6 @@ Run the deterministic checks with:
 pnpm check
 ```
 
-`pnpm check` type-checks the source, builds the real MV3 directory, runs scoring and exact-span tests, and inspects the built manifest and bundles.
+`pnpm check` type-checks the source, builds the real MV3 directory, runs scoring and exact-span tests, and inspects the built manifest, bundles, capture listener order, and third-party notices.
 
 The unpacked extension has been rebuilt and checked in Chrome at side-panel width. The toolbar action captured a Google Careers job title and advanced through onboarding to the job-ready screen. Live Gateway verification requires a real session key after each extension reload.

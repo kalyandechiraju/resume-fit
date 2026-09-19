@@ -62,7 +62,6 @@ export type AnalysisSnapshot = Readonly<{
 }>;
 
 export type SourceSpan = Readonly<{
-  id: string;
   text: string;
   start: number;
   end: number;
@@ -101,13 +100,6 @@ export type RequirementEvidence =
       resumeEvidence: SourceSpan;
     }>;
 
-export type Coverage = Readonly<{
-  clear: number;
-  partial: number;
-  related: number;
-  noMatch: number;
-}>;
-
 export type FitMetricResult =
   | Readonly<{
       kind: "not-applicable";
@@ -121,7 +113,6 @@ export type FitMetricResult =
       label: string;
       weight: number;
       score: number;
-      coverage: Coverage;
     }>;
 
 export type FitMetricResults = readonly [
@@ -131,22 +122,14 @@ export type FitMetricResults = readonly [
   FitMetricResult,
 ];
 
-export type QualificationBlocker = Readonly<{
-  requirement: SourceSpan;
-}>;
-
 export type FitReport =
   | Readonly<{
       kind: "scored";
-      snapshot: AnalysisSnapshot;
       score: number;
       metrics: FitMetricResults;
-      blockers: readonly QualificationBlocker[];
-      evidence: readonly RequirementEvidence[];
     }>
   | Readonly<{
       kind: "insufficient-job-requirements";
-      snapshot: AnalysisSnapshot;
     }>;
 
 export type CaptureFailureCode =

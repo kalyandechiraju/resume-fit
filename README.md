@@ -31,7 +31,7 @@ Chrome shows a developer-mode notice for manually installed extensions. Keep the
 1. Open Resume Fit and choose a PDF or DOCX resume.
 2. Add your [Vercel AI Gateway API key](https://vercel.com/ai-gateway).
 3. Open a job listing in the current tab.
-4. Select the Resume Fit icon and confirm the captured job text.
+4. Select the Resume Fit icon and confirm the captured job title.
 5. Select **Analyze match**.
 
 The extension stores extracted resume text locally. It keeps the current job text and API key in browser-session storage. Analysis sends the confirmed resume and job text through Vercel AI Gateway to TypeSafe Jev. See [PRIVACY.md](PRIVACY.md) for the complete data flow.
@@ -63,6 +63,7 @@ extension/src/       TypeScript source
 extension/static/    Manifest, HTML, CSS, fonts, icons, and illustrations
 extension/test/      Node test suite
 store-assets/        Release and Chrome Web Store screenshots
+.github/workflows/   Continuous integration
 ```
 
 The product has no website runtime, hosted backend, account system, analytics, persistent content script, or broad host permission. Its only host access is `https://ai-gateway.vercel.sh/*`.
@@ -70,6 +71,8 @@ The product has no website runtime, hosted backend, account system, analytics, p
 ## Contribute
 
 Open an issue before making a large change. For a code change, run `pnpm check` and keep permissions and remote access within the limits documented in [AGENTS.md](AGENTS.md).
+
+Report security vulnerabilities privately using [SECURITY.md](SECURITY.md).
 
 ## License
 

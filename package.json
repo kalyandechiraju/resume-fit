@@ -2,12 +2,15 @@
   "name": "resume-job-fit",
   "version": "0.3.0",
   "private": true,
+  "license": "MIT",
+  "repository": "github:kalyandechiraju/resume-fit",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "pnpm --filter @resume-fit/extension build",
     "check": "pnpm --filter @resume-fit/extension check",
-    "extension:build": "pnpm --filter @resume-fit/extension build",
-    "extension:typecheck": "pnpm --filter @resume-fit/extension typecheck",
-    "extension:check": "pnpm --filter @resume-fit/extension check"
+    "typecheck": "pnpm --filter @resume-fit/extension typecheck"
   },
   "packageManager": "pnpm@10.17.0"
 }

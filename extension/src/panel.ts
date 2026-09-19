@@ -361,9 +361,9 @@ async function boot(): Promise<void> {
     } finally { captureProcessing = false; }
   };
 
+  chrome.storage.onChanged.addListener((_changes, areaName) => { if (areaName === "session") void applyLatestCapture(); });
   await applyLatestCapture();
   repaint();
-  chrome.storage.onChanged.addListener((_changes, areaName) => { if (areaName === "session") void applyLatestCapture(); });
   settingsButton.addEventListener("click", () => {
     settingsReturn = report ? "report" : "main";
     focusNext = true;
@@ -468,7 +468,7 @@ async function boot(): Promise<void> {
       analyzeController = controller;
       setState({ kind: "analyzing", inputs: snapshotForInputs(assessment), phase: "finding-requirements" }, "Finding job requirements.");
       void analyzeFit({
-        apiKey: assessment.apiKey, snapshot, resumeText: assessment.resume.text, jobText: assessment.job.text, signal: controller.signal,
+        apiKey: assessment.apiKey, resumeText: assessment.resume.text, jobText: assessment.job.text, signal: controller.signal,
         onPhase: (phase) => { if (analyzeAttemptId === attemptId) setState({ kind: "analyzing", inputs: snapshotForInputs(assessment), phase }, phase === "matching-resume" ? "Matching resume evidence." : "Finding job requirements."); },
       }).then((nextReport) => {
         if (analyzeAttemptId !== attemptId || analyzeController !== controller) return;

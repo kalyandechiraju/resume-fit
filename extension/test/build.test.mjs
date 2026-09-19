@@ -21,6 +21,8 @@ test("build output satisfies the MV3 shell contract", async () => {
   const css = await readOutput("sidepanel/styles.css");
   const worker = await readOutput("background.js");
   const panel = await readOutput("sidepanel/panel.js");
+  const panelSource = await readFile(join(extensionRoot, "src/panel.ts"), "utf8");
+  const thirdPartyNotices = await readOutput("THIRD_PARTY_NOTICES.txt");
 
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.minimum_chrome_version, "116");
@@ -58,6 +60,7 @@ test("build output satisfies the MV3 shell contract", async () => {
     outputExists("assets/fonts/instrument-serif-italic-latin.woff2"),
     outputExists("assets/fonts/DM-Sans-LICENSE.txt"),
     outputExists("assets/fonts/Instrument-Serif-LICENSE.txt"),
+    outputExists("THIRD_PARTY_NOTICES.txt"),
   ]);
 
   assert.match(worker, /chrome\.action\.onClicked/);
@@ -90,4 +93,12 @@ test("build output satisfies the MV3 shell contract", async () => {
   assert.doesNotMatch(css, /(?:https?:|data:|javascript:)/i);
   assert.doesNotMatch(worker, /(?:https?:|data:|javascript:)/i);
   assert.equal(/\beval\s*\(|\bnew Function\s*\(/.test(panel), false, "panel bundle must not contain dynamic code");
+  assert.ok(
+    panelSource.indexOf("chrome.storage.onChanged.addListener") < panelSource.indexOf("await applyLatestCapture()"),
+    "capture listener must be registered before the initial inbox read",
+  );
+  assert.match(thirdPartyNotices, /Apache License/);
+  assert.match(thirdPartyNotices, /MIT License/);
+  assert.match(thirdPartyNotices, /@ai-sdk\/gateway@4\.0\.87/);
+  assert.match(thirdPartyNotices, /unpdf@1\.8\.1/);
 });

@@ -99,31 +99,31 @@ When the user selects **Analyze match**, Resume Fit sends the extracted resume t
 
 **Privacy Policy URL** [REQUIRED]
 
-Source policy: `PRIVACY.md`. TODO: publish it at a stable HTTPS URL and add that URL before submission.
+https://github.com/kalyandechiraju/resume-fit/blob/main/PRIVACY.md
 
 ## Distribution
 
-**Visibility**: TODO: choose Public, Unlisted, or Private before submission.
+**Visibility**: Public
 
-**Regions**: TODO: choose All regions or list specific regions before submission.
+**Regions**: All regions
 
 ## Developer Info
 
 **Publisher Name** [REQUIRED]
 
-TODO: provide the publisher name.
+Kalyan Dechiraju
 
 **Contact Email** [REQUIRED]
 
 TODO: provide the public support contact email.
 
-**Support URL and Email** [RECOMMENDED]
+**Support URL** [RECOMMENDED]
 
-TODO: provide a support URL or email.
+https://github.com/kalyandechiraju/resume-fit/issues
 
 **Homepage URL** [RECOMMENDED]
 
-Optional. This extension has no product website; the published privacy-policy URL may be used.
+https://github.com/kalyandechiraju/resume-fit
 
 ## Version History
 
@@ -138,7 +138,7 @@ Optional. This extension has no product website; the published privacy-policy UR
 ### Known Issues and Limitations
 
 - Protected Chrome pages and pages without readable text require paste fallback.
-- Publisher name, contact email, hosted privacy URL, visibility, and regions require publisher input before upload.
+- A monitored public contact email is still required before upload.
 
 ### Rejection History
 

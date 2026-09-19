@@ -12,14 +12,13 @@ const [{ text: moduleText }] = (await build({
 
 const { analyzeFit, buildFitReport, makeSourceSpans } = await import(`data:text/javascript;base64,${Buffer.from(moduleText).toString("base64")}`);
 
-test("exact evidence produces deterministic coverage and score", () => {
+test("exact evidence produces deterministic metric and overall scores", () => {
   const jobText = "Build accessible interfaces\nLead product discovery";
   const resumeText = "Built accessible interfaces for three products\nLed discovery with customers";
-  const [accessibility, discovery] = makeSourceSpans(jobText, "job");
-  const [built, led] = makeSourceSpans(resumeText, "resume");
+  const [accessibility, discovery] = makeSourceSpans(jobText);
+  const [built, led] = makeSourceSpans(resumeText);
 
   const report = buildFitReport({
-    snapshot: { resumeVersion: "resume-v1", jobVersion: "job-v1" },
     jobText,
     resumeText,
     evidence: [
@@ -30,21 +29,20 @@ test("exact evidence produces deterministic coverage and score", () => {
 
   assert.equal(report.kind, "scored");
   assert.equal(report.score, 77);
-  assert.deepEqual(report.metrics[1].coverage, { clear: 1, partial: 0, related: 0, noMatch: 0 });
-  assert.deepEqual(report.metrics[2].coverage, { clear: 0, partial: 1, related: 0, noMatch: 0 });
+  assert.equal(report.metrics[1].score, 100);
+  assert.equal(report.metrics[2].score, 50);
 });
 
 test("report builder rejects evidence outside the source text", () => {
   assert.throws(() => buildFitReport({
-    snapshot: { resumeVersion: "resume-v1", jobVersion: "job-v1" },
     jobText: "Build accessible interfaces",
     resumeText: "Built a design system",
     evidence: [{
       metric: "skillset",
       importance: "required",
       alignment: "clear",
-      requirement: { id: "job-0", text: "Build accessible interfaces", start: 0, end: 27 },
-      resumeEvidence: { id: "resume-0", text: "Invented evidence", start: 0, end: 17 },
+      requirement: { text: "Build accessible interfaces", start: 0, end: 27 },
+      resumeEvidence: { text: "Invented evidence", start: 0, end: 17 },
     }],
   }), /invalid resume evidence/);
 });
@@ -54,7 +52,6 @@ test("AI SDK sends typed Jev evaluations through Vercel AI Gateway", async () =>
   const phases = [];
   const report = await analyzeFit({
     apiKey: "vck_placeholder_for_tests",
-    snapshot: { resumeVersion: "resume-v1", jobVersion: "job-v1" },
     resumeText: "Built TypeScript interfaces",
     jobText: "Build accessible interfaces",
     signal: new AbortController().signal,
@@ -80,7 +77,6 @@ test("Gateway authentication failures remain actionable", async () => {
 
   await assert.rejects(analyzeFit({
     apiKey: "vck_invalid_for_test",
-    snapshot: { resumeVersion: "resume-v1", jobVersion: "job-v1" },
     resumeText: "Built accessible interfaces",
     jobText: "Build accessible interfaces",
     signal: new AbortController().signal,
@@ -99,7 +95,6 @@ test("Gateway customer verification failures remain actionable", async () => {
 
   await assert.rejects(analyzeFit({
     apiKey: "vck_valid_for_test",
-    snapshot: { resumeVersion: "resume-v1", jobVersion: "job-v1" },
     resumeText: "Built accessible interfaces",
     jobText: "Build accessible interfaces",
     signal: new AbortController().signal,
@@ -116,7 +111,6 @@ test("large analyses use two Gateway requests", async () => {
 
   await analyzeFit({
     apiKey: "vck_placeholder_for_tests",
-    snapshot: { resumeVersion: "resume-v1", jobVersion: "job-v1" },
     resumeText: "Built TypeScript interfaces",
     jobText: Array.from({ length: 64 }, (_, index) => `Use TypeScript requirement ${index}`).join("\n"),
     signal: new AbortController().signal,
@@ -125,8 +119,6 @@ test("large analyses use two Gateway requests", async () => {
 
   assert.equal(requests.length, 2);
 });
-
-const strictSnapshot = { resumeVersion: "resume-v1", jobVersion: "job-v1" };
 
 function strictChoice(choice, probabilities) {
   return probabilities === undefined
@@ -179,8 +171,8 @@ function singleStrictEvidence({
   jobText = "Use TypeScript for product interfaces",
   resumeText = "Built TypeScript interfaces for customers",
 } = {}) {
-  const [requirement] = makeSourceSpans(jobText, "job");
-  const [resumeEvidence] = makeSourceSpans(resumeText, "resume");
+  const [requirement] = makeSourceSpans(jobText);
+  const [resumeEvidence] = makeSourceSpans(resumeText);
   return {
     jobText,
     resumeText,
@@ -207,10 +199,9 @@ test("fixed metrics are presentation-ready and ordered", () => {
     "Owned roadmap delivery across product teams",
     "MBA, Example University",
   ].join("\n");
-  const requirements = makeSourceSpans(jobText, "job");
-  const resumes = makeSourceSpans(resumeText, "resume");
+  const requirements = makeSourceSpans(jobText);
+  const resumes = makeSourceSpans(resumeText);
   const report = buildFitReport({
-    snapshot: strictSnapshot,
     jobText,
     resumeText,
     evidence: [
@@ -226,28 +217,24 @@ test("fixed metrics are presentation-ready and ordered", () => {
   assert.deepEqual(report.metrics.map((metric) => metric.metric), ["experience", "skillset", "responsibility", "qualification"]);
   assert.deepEqual(report.metrics.map((metric) => metric.weight), [30, 30, 25, 15]);
   assert.deepEqual(report.metrics.map((metric) => metric.score), [100, 100, 100, 100]);
-  assert.deepEqual(report.blockers, []);
 });
 
-test("related evidence is retained but earns zero", () => {
+test("related evidence earns zero", () => {
   const args = singleStrictEvidence({ alignment: "related" });
-  const report = buildFitReport({ snapshot: strictSnapshot, ...args });
+  const report = buildFitReport(args);
 
   assert.equal(report.kind, "scored");
   assert.equal(report.score, 0);
   assert.equal(report.metrics[1].kind, "scored");
   assert.equal(report.metrics[1].score, 0);
-  assert.equal(report.evidence[0].alignment, "related");
-  assert.equal(report.evidence[0].resumeEvidence?.text, "Built TypeScript interfaces for customers");
 });
 
 test("not-applicable metrics are excluded from the overall denominator", () => {
   const jobText = ["Five years of product management", "Use SQL", "Own roadmap delivery"].join("\n");
   const resumeText = ["Five years product management", "Used SQL", "No roadmap experience"].join("\n");
-  const requirements = makeSourceSpans(jobText, "job");
-  const resumes = makeSourceSpans(resumeText, "resume");
+  const requirements = makeSourceSpans(jobText);
+  const resumes = makeSourceSpans(resumeText);
   const report = buildFitReport({
-    snapshot: strictSnapshot,
     jobText,
     resumeText,
     evidence: [
@@ -262,20 +249,10 @@ test("not-applicable metrics are excluded from the overall denominator", () => {
   assert.equal(report.metrics[3].kind, "not-applicable");
 });
 
-test("a required qualification without clear evidence creates a blocker", () => {
-  const args = singleStrictEvidence({ metric: "qualification", alignment: "partial" });
-  const report = buildFitReport({ snapshot: strictSnapshot, ...args });
-
-  assert.equal(report.kind, "scored");
-  assert.equal(report.blockers.length, 1);
-  assert.equal(report.blockers[0].requirement.text, args.jobText);
-});
-
 test("clear evidence at the .70 threshold earns full credit", async () => {
   const { fetchImpl } = strictGatewayFetch({ probabilities: strictEvidenceProbabilities({ no_match: 0.1, related_only: 0.1, partial_match: 0.1, clear_match: 0.7 }) });
   const report = await analyzeFit({
     apiKey: "vck_placeholder_for_tests",
-    snapshot: strictSnapshot,
     resumeText: "Built TypeScript interfaces for customers",
     jobText: "Use TypeScript for product interfaces",
     signal: new AbortController().signal,
@@ -284,14 +261,12 @@ test("clear evidence at the .70 threshold earns full credit", async () => {
 
   assert.equal(report.kind, "scored");
   assert.equal(report.score, 100);
-  assert.equal(report.evidence[0].alignment, "clear");
 });
 
 test("clear evidence at .69 earns only partial credit", async () => {
   const { fetchImpl } = strictGatewayFetch({ probabilities: strictEvidenceProbabilities({ no_match: 0.1, related_only: 0.1, partial_match: 0.11, clear_match: 0.69 }) });
   const report = await analyzeFit({
     apiKey: "vck_placeholder_for_tests",
-    snapshot: strictSnapshot,
     resumeText: "Built TypeScript interfaces for customers",
     jobText: "Use TypeScript for product interfaces",
     signal: new AbortController().signal,
@@ -300,14 +275,12 @@ test("clear evidence at .69 earns only partial credit", async () => {
 
   assert.equal(report.kind, "scored");
   assert.equal(report.score, 50);
-  assert.equal(report.evidence[0].alignment, "partial");
 });
 
 test("explicit year thresholds are compared in code", async () => {
   const { fetchImpl } = strictGatewayFetch();
   const report = await analyzeFit({
     apiKey: "vck_placeholder_for_tests",
-    snapshot: strictSnapshot,
     resumeText: "Used TypeScript in product development for 5 years",
     jobText: "8 years of TypeScript product development experience",
     signal: new AbortController().signal,
@@ -316,14 +289,12 @@ test("explicit year thresholds are compared in code", async () => {
 
   assert.equal(report.kind, "scored");
   assert.equal(report.score, 50);
-  assert.equal(report.evidence[0].alignment, "partial");
 });
 
 test("missing evidence probabilities fail closed without displaying an excerpt", async () => {
   const { fetchImpl } = strictGatewayFetch({ evidenceChoice: "clear_match", probabilities: undefined });
   const report = await analyzeFit({
     apiKey: "vck_placeholder_for_tests",
-    snapshot: strictSnapshot,
     resumeText: "Built TypeScript interfaces for customers",
     jobText: "Use TypeScript for product interfaces",
     signal: new AbortController().signal,
@@ -332,8 +303,6 @@ test("missing evidence probabilities fail closed without displaying an excerpt",
 
   assert.equal(report.kind, "scored");
   assert.equal(report.score, 0);
-  assert.equal(report.evidence[0].alignment, "no-match");
-  assert.equal(report.evidence[0].resumeEvidence, null);
 });
 
 test("low-confidence supportive evidence fails closed instead of fabricating related evidence", async () => {
@@ -343,7 +312,6 @@ test("low-confidence supportive evidence fails closed instead of fabricating rel
   });
   const report = await analyzeFit({
     apiKey: "vck_placeholder_for_tests",
-    snapshot: strictSnapshot,
     resumeText: "Built TypeScript interfaces for customers",
     jobText: "Use TypeScript for product interfaces",
     signal: new AbortController().signal,
@@ -352,8 +320,6 @@ test("low-confidence supportive evidence fails closed instead of fabricating rel
 
   assert.equal(report.kind, "scored");
   assert.equal(report.score, 0);
-  assert.equal(report.evidence[0].alignment, "no-match");
-  assert.equal(report.evidence[0].resumeEvidence, null);
 });
 
 test("malformed Choice probability maps fail at the response boundary", async () => {
@@ -361,7 +327,6 @@ test("malformed Choice probability maps fail at the response boundary", async ()
 
   await assert.rejects(analyzeFit({
     apiKey: "vck_placeholder_for_tests",
-    snapshot: strictSnapshot,
     resumeText: "Built TypeScript interfaces for customers",
     jobText: "Use TypeScript for product interfaces",
     signal: new AbortController().signal,
@@ -377,7 +342,6 @@ test("zero substantive overlap asks no evidence question and returns no match", 
   const { fetchImpl, requests } = strictGatewayFetch();
   const report = await analyzeFit({
     apiKey: "vck_placeholder_for_tests",
-    snapshot: strictSnapshot,
     resumeText: "JANE DOE\njane@example.com\nEXPERIENCE",
     jobText: "Product Manager",
     signal: new AbortController().signal,
@@ -387,15 +351,12 @@ test("zero substantive overlap asks no evidence question and returns no match", 
   assert.equal(report.kind, "scored");
   assert.equal(requests.length, 1);
   assert.equal(report.score, 0);
-  assert.equal(report.evidence[0].alignment, "no-match");
-  assert.equal(report.evidence[0].resumeEvidence, null);
 });
 
 test("Gateway requests use Choice for strict evidence evaluation", async () => {
   const { fetchImpl, requests } = strictGatewayFetch();
   await analyzeFit({
     apiKey: "vck_placeholder_for_tests",
-    snapshot: strictSnapshot,
     resumeText: "Built TypeScript interfaces for customers",
     jobText: "Use TypeScript for product interfaces",
     signal: new AbortController().signal,
@@ -417,11 +378,10 @@ test("Gateway requests use Choice for strict evidence evaluation", async () => {
 test("report builder rejects arbitrary evidence for no match", () => {
   const jobText = "Product Manager";
   const resumeText = "JANE DOE\njane@example.com";
-  const [requirement] = makeSourceSpans(jobText, "job");
-  const [contact] = makeSourceSpans(resumeText, "resume");
+  const [requirement] = makeSourceSpans(jobText);
+  const [contact] = makeSourceSpans(resumeText);
 
   assert.throws(() => buildFitReport({
-    snapshot: strictSnapshot,
     jobText,
     resumeText,
     evidence: [{

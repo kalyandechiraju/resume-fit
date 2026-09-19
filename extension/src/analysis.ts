@@ -11,12 +11,10 @@ import {
   LIMITS,
   normalizeForComparison,
   type Alignment,
-  type AnalysisSnapshot,
   type FitMetric,
   type FitMetricResult,
   type FitMetricResults,
   type FitReport,
-  type QualificationBlocker,
   type Requirement,
   type RequirementEvidence,
   type RequirementImportance,
@@ -195,7 +193,7 @@ function trimmedRange(text: string, start: number, end: number): SourceSpan | nu
   while (start < end && /\s/u.test(text[start] ?? "")) start += 1;
   while (end > start && /\s/u.test(text[end - 1] ?? "")) end -= 1;
   if (start >= end) return null;
-  return { id: "", text: text.slice(start, end), start, end };
+  return { text: text.slice(start, end), start, end };
 }
 
 function pushChunks(text: string, start: number, end: number, spans: SourceSpan[]): void {
@@ -219,7 +217,7 @@ function pushChunks(text: string, start: number, end: number, spans: SourceSpan[
   }
 }
 
-export function makeSourceSpans(text: string, prefix: "job" | "resume", maxSpans = LIMITS.maxSpans): readonly SourceSpan[] {
+export function makeSourceSpans(text: string, maxSpans = LIMITS.maxSpans): readonly SourceSpan[] {
   const spans: SourceSpan[] = [];
   const lines = /[^\n]+/g;
   let match: RegExpExecArray | null;
@@ -230,7 +228,7 @@ export function makeSourceSpans(text: string, prefix: "job" | "resume", maxSpans
     const key = normalizeForComparison(span.text);
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    unique.push({ ...span, id: `${prefix}-${unique.length}` });
+    unique.push(span);
     if (unique.length >= maxSpans) break;
   }
   return unique;
@@ -267,7 +265,7 @@ async function classifyRequirements(jobSpans: readonly SourceSpan[], apiKey: str
       },
     };
   }
-  const answers = await evaluateQuestions({ state: { jobSpans: jobSpans.map((span) => ({ id: span.id, text: span.text })) }, questions, apiKey, signal, fetchImpl });
+  const answers = await evaluateQuestions({ state: { jobSpans: jobSpans.map((span) => ({ text: span.text })) }, questions, apiKey, signal, fetchImpl });
   for (const [index, span] of jobSpans.entries()) {
     const importance = parseChoice(answers, `importance_${index}`, ["required", "preferred"]);
     const metric = parseChoice(answers, `metric_${index}`, FIT_METRICS.map((item) => item.metric));
@@ -451,17 +449,6 @@ function matchCredit(alignment: Alignment): number {
   return 0;
 }
 
-function emptyCoverage(): { clear: number; partial: number; related: number; noMatch: number } {
-  return { clear: 0, partial: 0, related: 0, noMatch: 0 };
-}
-
-function addCoverage(coverage: { clear: number; partial: number; related: number; noMatch: number }, alignment: Alignment): void {
-  if (alignment === "clear") coverage.clear += 1;
-  else if (alignment === "partial") coverage.partial += 1;
-  else if (alignment === "related") coverage.related += 1;
-  else coverage.noMatch += 1;
-}
-
 function boundedPercent(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
@@ -471,14 +458,12 @@ function scoreMetric(policy: (typeof FIT_METRICS)[number], evidence: readonly Re
   if (requirements.length === 0) {
     return { kind: "not-applicable", metric: policy.metric, label: policy.label, weight: policy.weight };
   }
-  const coverage = emptyCoverage();
   let available = 0;
   let earned = 0;
   for (const item of requirements) {
     const weight = importanceWeight(item.importance);
     available += weight;
     earned += weight * matchCredit(item.alignment);
-    addCoverage(coverage, item.alignment);
   }
   return {
     kind: "scored",
@@ -486,7 +471,6 @@ function scoreMetric(policy: (typeof FIT_METRICS)[number], evidence: readonly Re
     label: policy.label,
     weight: policy.weight,
     score: boundedPercent((earned / available) * 100),
-    coverage,
   };
 }
 
@@ -501,16 +485,9 @@ function scoreOverall(metrics: FitMetricResults): number {
   return denominator === 0 ? 0 : boundedPercent(numerator / denominator);
 }
 
-function qualificationBlockers(evidence: readonly RequirementEvidence[]): readonly QualificationBlocker[] {
-  return evidence.flatMap((item) => {
-    if (item.metric !== "qualification" || item.importance !== "required" || item.alignment === "clear") return [];
-    return [{ requirement: item.requirement }];
-  });
-}
-
-export function buildFitReport(args: Readonly<{ snapshot: AnalysisSnapshot; jobText: string; resumeText: string; evidence: readonly RequirementEvidence[] }>): FitReport {
+export function buildFitReport(args: Readonly<{ jobText: string; resumeText: string; evidence: readonly RequirementEvidence[] }>): FitReport {
   validateEvidence(args.jobText, args.resumeText, args.evidence);
-  if (args.evidence.length === 0) return { kind: "insufficient-job-requirements", snapshot: args.snapshot };
+  if (args.evidence.length === 0) return { kind: "insufficient-job-requirements" };
   const metrics: FitMetricResults = [
     scoreMetric(FIT_METRICS[0], args.evidence),
     scoreMetric(FIT_METRICS[1], args.evidence),
@@ -519,17 +496,13 @@ export function buildFitReport(args: Readonly<{ snapshot: AnalysisSnapshot; jobT
   ];
   return {
     kind: "scored",
-    snapshot: args.snapshot,
     score: scoreOverall(metrics),
     metrics,
-    blockers: qualificationBlockers(args.evidence),
-    evidence: args.evidence,
   };
 }
 
 export type AnalyzeFitArgs = Readonly<{
   apiKey: string;
-  snapshot: AnalysisSnapshot;
   resumeText: string;
   jobText: string;
   signal: AbortSignal;
@@ -540,12 +513,12 @@ export type AnalyzeFitArgs = Readonly<{
 export async function analyzeFit(args: AnalyzeFitArgs): Promise<FitReport> {
   if (!args.apiKey.trim() || !args.resumeText.trim() || !args.jobText.trim()) throw new AnalysisError("insufficient-input", "Resume, confirmed job text, and API key are required.");
   const fetchImpl = args.fetchImpl ?? fetch;
-  const jobSpans = makeSourceSpans(args.jobText, "job");
-  const resumeSpans = makeSourceSpans(args.resumeText, "resume");
+  const jobSpans = makeSourceSpans(args.jobText);
+  const resumeSpans = makeSourceSpans(args.resumeText);
   args.onPhase?.("finding-requirements");
   const requirements = await classifyRequirements(jobSpans, args.apiKey, args.signal, fetchImpl);
-  if (requirements.length === 0) return { kind: "insufficient-job-requirements", snapshot: args.snapshot };
+  if (requirements.length === 0) return { kind: "insufficient-job-requirements" };
   args.onPhase?.("matching-resume");
   const evidence = await scoreEvidence(requirements, resumeSpans, args.apiKey, args.signal, fetchImpl);
-  return buildFitReport({ snapshot: args.snapshot, jobText: args.jobText, resumeText: args.resumeText, evidence });
+  return buildFitReport({ jobText: args.jobText, resumeText: args.resumeText, evidence });
 }
