@@ -16,7 +16,7 @@ Resume Fit is an open-source Manifest V3 Chrome extension. It reads a PDF or DOC
 
 ## Install the extension
 
-1. Download `resume-fit-v0.3.0.zip` from the [latest release](https://github.com/kalyandechiraju/resume-fit/releases/latest).
+1. Download `resume-fit-v0.3.1.zip` from the [latest release](https://github.com/kalyandechiraju/resume-fit/releases/latest).
 2. Unzip the file.
 3. Open `chrome://extensions` in Chrome.
 4. Turn on **Developer mode**.
@@ -41,7 +41,7 @@ The extension stores extracted resume text locally. It keeps the current job tex
 Requirements:
 
 - Chrome 116 or later
-- Node.js 20 or later
+- Node.js 22 or later
 - pnpm 10.17.0
 
 ```sh

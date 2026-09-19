@@ -22,6 +22,7 @@ test("build output satisfies the MV3 shell contract", async () => {
   const worker = await readOutput("background.js");
   const panel = await readOutput("sidepanel/panel.js");
   const panelSource = await readFile(join(extensionRoot, "src/panel.ts"), "utf8");
+  const backgroundSource = await readFile(join(extensionRoot, "src/background.ts"), "utf8");
   const thirdPartyNotices = await readOutput("THIRD_PARTY_NOTICES.txt");
 
   assert.equal(manifest.manifest_version, 3);
@@ -93,6 +94,7 @@ test("build output satisfies the MV3 shell contract", async () => {
   assert.doesNotMatch(css, /(?:https?:|data:|javascript:)/i);
   assert.doesNotMatch(worker, /(?:https?:|data:|javascript:)/i);
   assert.equal(/\beval\s*\(|\bnew Function\s*\(/.test(panel), false, "panel bundle must not contain dynamic code");
+  assert.doesNotMatch(`${panelSource}\n${backgroundSource}`, /\.then\(|\.catch\(/, "extension source must use async/await");
   assert.ok(
     panelSource.indexOf("chrome.storage.onChanged.addListener") < panelSource.indexOf("await applyLatestCapture()"),
     "capture listener must be registered before the initial inbox read",

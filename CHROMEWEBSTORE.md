@@ -129,7 +129,8 @@ https://github.com/kalyandechiraju/resume-fit
 
 | Version | Date | Changes | Status |
 | --- | --- | --- | --- |
-| 0.3.0 | 2026-09-19 | Added the redesigned side panel, minimal score report, workflow illustrations, and production icon set. | Release candidate |
+| 0.3.1 | 2026-09-19 | Fixed panel startup capture handling and added release compliance files. | Release candidate |
+| 0.3.0 | 2026-09-19 | Added the redesigned side panel, minimal score report, workflow illustrations, and production icon set. | Superseded |
 | 0.2.0 | 2026-09-18 | Added local resume parsing, one-shot job capture, TypeSafe analysis, and evidence reports. | Draft |
 | 0.1.0 | 2026-09-18 | Added the working side-panel shell. | Draft |
 

@@ -370,7 +370,7 @@ async function boot(): Promise<void> {
     setState({ kind: "settings", inputs: snapshotForInputs(assessment), notice: null, error: null }, "Settings opened.");
   });
 
-  root.addEventListener("change", (event) => {
+  const handleResumeChange = async (event: Event): Promise<void> => {
     const target = event.target;
     if (!(target instanceof HTMLInputElement) || target.id !== "resume-file") return;
     const file = target.files?.item(0);
@@ -380,115 +380,124 @@ async function boot(): Promise<void> {
     parseAttemptId = attemptId;
     focusNext = false;
     setState({ kind: "parsing-resume", inputs: snapshotForInputs(assessment), fileName: file.name, returnTo }, `Reading ${file.name}.`);
-    void parseResume(file).then(async (resume) => {
+    try {
+      const resume = await parseResume(file);
       if (parseAttemptId !== attemptId) return;
       await saveResume(storage, resume);
       assessment = { ...assessment, resume };
       report = null;
       focusNext = true;
       setState(returnTo === "settings" ? { kind: "settings", inputs: snapshotForInputs(assessment), notice: "Resume replaced.", error: null } : normalState(assessment), "Resume saved locally.");
-    }).catch((error: unknown) => {
+    } catch (error) {
       if (parseAttemptId !== attemptId) return;
       focusNext = true;
       const text = errorMessage(error);
       setState(returnTo === "settings" ? { kind: "settings", inputs: snapshotForInputs(assessment), notice: null, error: text } : { kind: "onboarding-resume", inputs: snapshotForInputs(assessment), error: text }, "The resume was not changed.");
-    });
-  });
+    }
+  };
+  root.addEventListener("change", (event) => { void handleResumeChange(event); });
 
-  root.addEventListener("click", (event) => {
+  const handleAction = async (event: MouseEvent): Promise<void> => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     const action = target.closest<HTMLElement>("[data-action]")?.dataset.action;
     if (!action) return;
-    if (action === "save-api-key") {
-      const apiKey = root.querySelector<HTMLInputElement>("#api-key")?.value.trim() ?? "";
-      if (!apiKey) {
-        const inputs = snapshotForInputs(assessment);
-        setState(state.kind === "settings" ? { kind: "settings", inputs, notice: null, error: "Paste a Vercel AI Gateway key first." } : { kind: "onboarding-key", inputs, error: "Paste a Vercel AI Gateway key first." }, "A key is required.");
-        return;
-      }
-      void saveApiKey(storage, apiKey).then(() => {
+    try {
+      if (action === "save-api-key") {
+        const apiKey = root.querySelector<HTMLInputElement>("#api-key")?.value.trim() ?? "";
+        if (!apiKey) {
+          const inputs = snapshotForInputs(assessment);
+          setState(state.kind === "settings" ? { kind: "settings", inputs, notice: null, error: "Paste a Vercel AI Gateway key first." } : { kind: "onboarding-key", inputs, error: "Paste a Vercel AI Gateway key first." }, "A key is required.");
+          return;
+        }
+        await saveApiKey(storage, apiKey);
         assessment = { ...assessment, apiKey };
         focusNext = true;
         setState(state.kind === "settings" ? { kind: "settings", inputs: snapshotForInputs(assessment), notice: "Session key saved.", error: null } : normalState(assessment), "AI Gateway connected for this session.");
-      }).catch(() => {
-        const inputs = snapshotForInputs(assessment);
-        setState(state.kind === "settings" ? { kind: "settings", inputs, notice: null, error: "The session key could not be saved." } : { kind: "onboarding-key", inputs, error: "The session key could not be saved." }, "The session key was not saved.");
-      });
-    } else if (action === "delete-api-key") {
-      void deleteApiKey(storage).then(() => {
+      } else if (action === "delete-api-key") {
+        await deleteApiKey(storage);
         assessment = { ...assessment, apiKey: null };
         report = null;
         focusNext = true;
         setState({ kind: "settings", inputs: snapshotForInputs(assessment), notice: "Session key cleared.", error: null }, "Session key cleared.");
-      });
-    } else if (action === "delete-resume") {
-      if (!window.confirm("Delete the saved resume text from this browser?")) return;
-      void deleteResume(storage).then(() => {
+      } else if (action === "delete-resume") {
+        if (!window.confirm("Delete the saved resume text from this browser?")) return;
+        await deleteResume(storage);
         abortAnalysis();
         assessment = { ...assessment, resume: null };
         report = null;
         focusNext = true;
         setState(normalState(assessment), "Saved resume deleted.");
-      });
-    } else if (action === "clear-job" || action === "restart") {
-      void deleteJob(storage).then(() => {
+      } else if (action === "clear-job" || action === "restart") {
+        await deleteJob(storage);
         abortAnalysis();
         assessment = { ...assessment, job: null };
         report = null;
         focusNext = true;
         setState(normalState(assessment), "Ready for another job page.");
-      });
-    } else if (action === "save-pasted-job") {
-      const text = normalizeText(root.querySelector<HTMLTextAreaElement>("#job-text")?.value ?? "");
-      if (!text) {
-        setState({ kind: "capture-error", inputs: snapshotForInputs(assessment), message: "Paste the job description before continuing." }, "Job text is required.");
-        return;
-      }
-      void saveJobConfirmed(storage, { source: "pasted", title: "Pasted job description", url: null, text }).then((job) => {
+      } else if (action === "save-pasted-job") {
+        const text = normalizeText(root.querySelector<HTMLTextAreaElement>("#job-text")?.value ?? "");
+        if (!text) {
+          setState({ kind: "capture-error", inputs: snapshotForInputs(assessment), message: "Paste the job description before continuing." }, "Job text is required.");
+          return;
+        }
+        const job = await saveJobConfirmed(storage, { source: "pasted", title: "Pasted job description", url: null, text });
         assessment = { ...assessment, job };
         report = null;
         focusNext = true;
         setState(normalState(assessment), "Pasted job saved.");
-      });
-    } else if (action === "close-settings") {
-      focusNext = true;
-      setState(settingsReturn === "report" && report ? { kind: "report", inputs: snapshotForInputs(assessment), report } : normalState(assessment), "Settings closed.");
-    } else if (action === "cancel-analysis") {
-      abortAnalysis();
-      focusNext = true;
-      setState(normalState(assessment, "Analysis cancelled."), "Analysis cancelled.");
-    } else if (action === "analyze") {
-      const snapshot = analysisSnapshot(assessment);
-      if (!snapshot || !assessment.apiKey || !assessment.resume || !assessment.job) return;
-      abortAnalysis();
-      const attemptId = newOpaqueVersion();
-      const controller = new AbortController();
-      analyzeAttemptId = attemptId;
-      analyzeController = controller;
-      setState({ kind: "analyzing", inputs: snapshotForInputs(assessment), phase: "finding-requirements" }, "Finding job requirements.");
-      void analyzeFit({
-        apiKey: assessment.apiKey, resumeText: assessment.resume.text, jobText: assessment.job.text, signal: controller.signal,
-        onPhase: (phase) => { if (analyzeAttemptId === attemptId) setState({ kind: "analyzing", inputs: snapshotForInputs(assessment), phase }, phase === "matching-resume" ? "Matching resume evidence." : "Finding job requirements."); },
-      }).then((nextReport) => {
-        if (analyzeAttemptId !== attemptId || analyzeController !== controller) return;
-        const current = analysisSnapshot(assessment);
-        if (!current || current.resumeVersion !== snapshot.resumeVersion || current.jobVersion !== snapshot.jobVersion) return;
-        report = nextReport;
-        analyzeAttemptId = null;
-        analyzeController = null;
+      } else if (action === "close-settings") {
         focusNext = true;
-        setState({ kind: "report", inputs: snapshotForInputs(assessment), report: nextReport }, "Analysis complete.");
-      }).catch((error: unknown) => {
-        if (analyzeAttemptId !== attemptId) return;
-        analyzeAttemptId = null;
-        analyzeController = null;
-        if (controller.signal.aborted) return;
+        setState(settingsReturn === "report" && report ? { kind: "report", inputs: snapshotForInputs(assessment), report } : normalState(assessment), "Settings closed.");
+      } else if (action === "cancel-analysis") {
+        abortAnalysis();
         focusNext = true;
-        setState({ kind: "analysis-error", inputs: snapshotForInputs(assessment), message: errorMessage(error) }, "Analysis failed. Your inputs were kept.");
-      });
+        setState(normalState(assessment, "Analysis cancelled."), "Analysis cancelled.");
+      } else if (action === "analyze") {
+        const snapshot = analysisSnapshot(assessment);
+        if (!snapshot || !assessment.apiKey || !assessment.resume || !assessment.job) return;
+        abortAnalysis();
+        const attemptId = newOpaqueVersion();
+        const controller = new AbortController();
+        analyzeAttemptId = attemptId;
+        analyzeController = controller;
+        setState({ kind: "analyzing", inputs: snapshotForInputs(assessment), phase: "finding-requirements" }, "Finding job requirements.");
+        try {
+          const nextReport = await analyzeFit({
+            apiKey: assessment.apiKey, resumeText: assessment.resume.text, jobText: assessment.job.text, signal: controller.signal,
+            onPhase: (phase) => { if (analyzeAttemptId === attemptId) setState({ kind: "analyzing", inputs: snapshotForInputs(assessment), phase }, phase === "matching-resume" ? "Matching resume evidence." : "Finding job requirements."); },
+          });
+          if (analyzeAttemptId !== attemptId || analyzeController !== controller) return;
+          const current = analysisSnapshot(assessment);
+          if (!current || current.resumeVersion !== snapshot.resumeVersion || current.jobVersion !== snapshot.jobVersion) return;
+          report = nextReport;
+          analyzeAttemptId = null;
+          analyzeController = null;
+          focusNext = true;
+          setState({ kind: "report", inputs: snapshotForInputs(assessment), report: nextReport }, "Analysis complete.");
+        } catch (error) {
+          if (analyzeAttemptId !== attemptId) return;
+          analyzeAttemptId = null;
+          analyzeController = null;
+          if (controller.signal.aborted) return;
+          focusNext = true;
+          setState({ kind: "analysis-error", inputs: snapshotForInputs(assessment), message: errorMessage(error) }, "Analysis failed. Your inputs were kept.");
+        }
+      }
+    } catch (error) {
+      const text = errorMessage(error);
+      focusNext = true;
+      if (state.kind === "settings") setState({ kind: "settings", inputs: snapshotForInputs(assessment), notice: null, error: text }, "That change was not saved.");
+      else if (state.kind === "capture-error") setState({ kind: "capture-error", inputs: snapshotForInputs(assessment), message: text }, "That change was not saved.");
+      else setState(normalState(assessment, text), "That change was not saved.");
     }
-  });
+  };
+  root.addEventListener("click", (event) => { void handleAction(event); });
 }
 
-void boot();
+try {
+  await boot();
+} catch {
+  const status = document.querySelector<HTMLElement>("#status");
+  if (status) status.textContent = "Resume Fit could not start. Reload the extension.";
+}

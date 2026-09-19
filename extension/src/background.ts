@@ -11,10 +11,14 @@ async function persistCapture(attemptId: string, execution: Promise<unknown>): P
   }
 }
 
+async function ignoreFailure(operation: Promise<unknown>): Promise<void> {
+  try { await operation; } catch {}
+}
+
 chrome.action.onClicked.addListener((tab) => {
   if (tab.windowId === undefined) return;
 
-  void chrome.sidePanel.open({ windowId: tab.windowId });
+  void ignoreFailure(chrome.sidePanel.open({ windowId: tab.windowId }));
   if (tab.id === undefined) return;
 
   const captureAttemptId = newOpaqueVersion();
@@ -22,6 +26,6 @@ chrome.action.onClicked.addListener((tab) => {
     target: { tabId: tab.id },
     func: extractPageText,
   });
-  void beginCapture(chrome.storage, captureAttemptId);
-  void persistCapture(captureAttemptId, execution);
+  void ignoreFailure(beginCapture(chrome.storage, captureAttemptId));
+  void ignoreFailure(persistCapture(captureAttemptId, execution));
 });
