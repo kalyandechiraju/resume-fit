@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Resume Fit</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to main content</a>
+    <header class="site-header">
+      <a class="brand" href="#main" aria-label="Resume Fit home">
+        <img src="../icons/icon-32.png" alt="" width="32" height="32">
+        <span class="brand-copy">
+          <span>Resume Fit<span class="brand-period" aria-hidden="true">.</span></span>
+          <small>Private match review</small>
+        </span>
+      </a>
+      <button id="settings-button" class="icon-button" type="button" aria-label="Open settings" aria-controls="app" aria-expanded="false" hidden>
+        <span aria-hidden="true">Settings</span>
+      </button>
+    </header>
+    <main id="main" tabindex="-1">
+      <h1 class="visually-hidden">Resume Fit</h1>
+      <div id="app"></div>
+      <p id="status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
+    </main>
+    <script src="panel.js" type="module"></script>
+  </body>
+</html>
