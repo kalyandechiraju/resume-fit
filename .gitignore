@@ -17,6 +17,8 @@ node_modules/
 # production
 /extension/dist/
 /release/
+/demo/out/*
+!/demo/out/resume-fit-demo.mp4
 
 # misc
 .DS_Store

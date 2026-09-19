@@ -2,8 +2,10 @@ import {
   LIMITS,
   type AssessmentInputs,
   type CaptureEnvelope,
+  type EvaluationConnection,
   type JobConfirmed,
   type ResumeDocument,
+  isEvaluationProvider,
   newOpaqueVersion,
 } from "./domain";
 
@@ -64,7 +66,20 @@ function parseJob(value: unknown): JobConfirmed | null {
 }
 
 function parseApiKey(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 && value.length <= 512 ? value : null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= 512 ? trimmed : null;
+}
+
+function parseConnection(value: unknown): EvaluationConnection | null {
+  if (typeof value === "string") {
+    const apiKey = parseApiKey(value);
+    return apiKey ? { provider: "vercel-gateway", apiKey } : null;
+  }
+  const item = record(value);
+  if (!item || !isEvaluationProvider(item.provider)) return null;
+  const apiKey = parseApiKey(item.apiKey);
+  return apiKey ? { provider: item.provider, apiKey } : null;
 }
 
 function parseCapture(value: unknown): CaptureEnvelope | null {
@@ -87,7 +102,7 @@ export async function loadAssessment(storage: StorageAreas): Promise<AssessmentI
   return {
     resume: parseResume(local[STORAGE_KEYS.resume]),
     job: parseJob(session[STORAGE_KEYS.job]),
-    apiKey: parseApiKey(session[STORAGE_KEYS.apiKey]),
+    connection: parseConnection(session[STORAGE_KEYS.apiKey]),
   };
 }
 
@@ -109,11 +124,13 @@ export async function deleteJob(storage: StorageAreas): Promise<void> {
   await storage.session.remove(STORAGE_KEYS.job);
 }
 
-export async function saveApiKey(storage: StorageAreas, apiKey: string): Promise<void> {
-  await storage.session.set({ [STORAGE_KEYS.apiKey]: apiKey });
+export async function saveConnection(storage: StorageAreas, connection: EvaluationConnection): Promise<void> {
+  const parsed = parseConnection(connection);
+  if (!parsed) throw new Error("Invalid evaluation connection.");
+  await storage.session.set({ [STORAGE_KEYS.apiKey]: parsed });
 }
 
-export async function deleteApiKey(storage: StorageAreas): Promise<void> {
+export async function deleteConnection(storage: StorageAreas): Promise<void> {
   await storage.session.remove(STORAGE_KEYS.apiKey);
 }
 
@@ -142,4 +159,8 @@ export function parseStoredJob(value: unknown): JobConfirmed | null {
 
 export function parseStoredResume(value: unknown): ResumeDocument | null {
   return parseResume(value);
+}
+
+export function parseStoredConnection(value: unknown): EvaluationConnection | null {
+  return parseConnection(value);
 }

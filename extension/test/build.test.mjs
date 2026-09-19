@@ -40,8 +40,8 @@ test("build output satisfies the MV3 shell contract", async () => {
   assert.equal(manifest.background.type, "module");
   assert.equal(manifest.side_panel.default_path, "sidepanel/index.html");
   assert.deepEqual(manifest.permissions, ["activeTab", "scripting", "sidePanel", "storage"]);
-  assert.deepEqual(manifest.host_permissions, ["https://ai-gateway.vercel.sh/*"]);
-  assert.equal(manifest.content_security_policy.extension_pages, "script-src 'self'; object-src 'self'; connect-src https://ai-gateway.vercel.sh");
+  assert.deepEqual(manifest.host_permissions, ["https://ai-gateway.vercel.sh/*", "https://api.typesafe.ai/*"]);
+  assert.equal(manifest.content_security_policy.extension_pages, "script-src 'self'; object-src 'self'; connect-src https://ai-gateway.vercel.sh https://api.typesafe.ai");
 
   await Promise.all([
     outputExists("background.js"),
@@ -67,6 +67,8 @@ test("build output satisfies the MV3 shell contract", async () => {
   assert.match(worker, /chrome\.action\.onClicked/);
   assert.match(worker, /chrome\.sidePanel\.open\(\{ windowId: tab\.windowId \}\)/);
   assert.match(worker, /chrome\.scripting\.executeScript/);
+  assert.doesNotMatch(worker, /api\.typesafe\.ai/);
+  assert.doesNotMatch(worker, /ai-gateway\.vercel\.sh/);
   assert.match(html, /<h1\b[^>]*>[^<]+<\/h1>/);
   assert.match(html, /role="status"[^>]*aria-live="polite"/);
   assert.match(html, /icons\/icon-32\.png/);
@@ -74,6 +76,10 @@ test("build output satisfies the MV3 shell contract", async () => {
   assert.match(css, /fonts\/instrument-serif-latin\.woff2/);
   assert.match(html, /<script src="panel\.js" type="module"><\/script>/);
   assert.match(panel, /ai-gateway\.vercel\.sh\/v4\/ai/);
+  assert.match(panel, /api\.typesafe\.ai/);
+  assert.match(panel, /jev-latest/);
+  assert.match(panel, /Evaluation provider/);
+  assert.match(panel, /TypeSafe direct API/);
   assert.match(panel, /typesafe-ai\/jev/);
   assert.match(panel, /Analyze another job/);
   assert.match(panel, /assets\/illustration-/);
@@ -102,5 +108,6 @@ test("build output satisfies the MV3 shell contract", async () => {
   assert.match(thirdPartyNotices, /Apache License/);
   assert.match(thirdPartyNotices, /MIT License/);
   assert.match(thirdPartyNotices, /@ai-sdk\/gateway@4\.0\.87/);
+  assert.match(thirdPartyNotices, /@ai-sdk\/typesafe-ai@3\.0\.4/);
   assert.match(thirdPartyNotices, /unpdf@1\.8\.1/);
 });

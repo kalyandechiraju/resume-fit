@@ -27,8 +27,8 @@
     "default_path": "sidepanel/index.html"
   },
   "permissions": ["activeTab", "scripting", "sidePanel", "storage"],
-  "host_permissions": ["https://ai-gateway.vercel.sh/*"],
+  "host_permissions": ["https://ai-gateway.vercel.sh/*", "https://api.typesafe.ai/*"],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://ai-gateway.vercel.sh"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://ai-gateway.vercel.sh https://api.typesafe.ai"
   }
 }

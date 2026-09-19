@@ -8,9 +8,15 @@
 
 <p align="center">
   <a href="https://github.com/kalyandechiraju/resume-fit/releases/latest">Download the latest release</a>
+  ·
+  <a href="demo/out/resume-fit-demo.mp4">Watch the 43-second demo</a>
 </p>
 
-![Resume Fit results](store-assets/screenshot-results.png)
+<p align="center">
+  <img src="store-assets/screenshot-onboarding.png" width="32%" alt="Resume Fit resume upload screen">
+  <img src="store-assets/screenshot-job-ready.png" width="32%" alt="Resume Fit captured job screen">
+  <img src="store-assets/screenshot-results.png" width="32%" alt="Resume Fit match results screen">
+</p>
 
 Resume Fit is an open-source Manifest V3 Chrome extension. It reads a PDF or DOCX resume, captures the job description in the current tab, and returns a focused match report in Chrome's side panel.
 
@@ -29,12 +35,12 @@ Chrome shows a developer-mode notice for manually installed extensions. Keep the
 ## Use Resume Fit
 
 1. Open Resume Fit and choose a PDF or DOCX resume.
-2. Add your [Vercel AI Gateway API key](https://vercel.com/ai-gateway).
+2. Choose **Vercel AI Gateway** or **TypeSafe direct API**, then add the matching API key. Use a [Vercel AI Gateway key](https://vercel.com/ai-gateway) for Gateway requests or a [TypeSafe API key](https://console.typesafe.ai/keys) for direct requests.
 3. Open a job listing in the current tab.
 4. Select the Resume Fit icon and confirm the captured job title.
 5. Select **Analyze match**.
 
-The extension stores extracted resume text locally. It keeps the current job text and API key in browser-session storage. Analysis sends the confirmed resume and job text through Vercel AI Gateway to TypeSafe Jev. See [PRIVACY.md](PRIVACY.md) for the complete data flow.
+The extension stores extracted resume text locally. It keeps the current job text and one active provider connection in browser-session storage. Analysis sends the confirmed resume and job text to the selected provider. Vercel AI Gateway requests use TypeSafe Jev through the Gateway. Direct requests use TypeSafe's `jev-latest` API. See [PRIVACY.md](PRIVACY.md) for the complete data flow.
 
 ## Build from source
 
@@ -63,10 +69,11 @@ extension/src/       TypeScript source
 extension/static/    Manifest, HTML, CSS, fonts, icons, and illustrations
 extension/test/      Node test suite
 store-assets/        Release and Chrome Web Store screenshots
+demo/                Remotion source and rendered product demo
 .github/workflows/   Continuous integration
 ```
 
-The product has no website runtime, hosted backend, account system, analytics, persistent content script, or broad host permission. Its only host access is `https://ai-gateway.vercel.sh/*`.
+The product has no website runtime, hosted backend, account system, analytics, persistent content script, or broad host permission. Its host access is limited to `https://ai-gateway.vercel.sh/*` and `https://api.typesafe.ai/*`.
 
 ## Contribute
 

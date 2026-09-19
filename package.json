@@ -10,6 +10,8 @@
   "scripts": {
     "build": "pnpm --filter @resume-fit/extension build",
     "check": "pnpm --filter @resume-fit/extension check",
+    "demo:render": "pnpm --filter @resume-fit/demo render",
+    "demo:studio": "pnpm --filter @resume-fit/demo studio",
     "typecheck": "pnpm --filter @resume-fit/extension typecheck"
   },
   "packageManager": "pnpm@10.17.0"

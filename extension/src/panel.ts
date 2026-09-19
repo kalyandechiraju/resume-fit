@@ -1,11 +1,12 @@
 import {
   analysisSnapshot, normalizeText, newOpaqueVersion, snapshotForInputs,
-  type AssessmentInputs, type FitMetricResult, type FitReport, type InputSnapshot,
+  isEvaluationProvider,
+  type AssessmentInputs, type EvaluationProvider, type FitMetricResult, type FitReport, type InputSnapshot,
 } from "./domain";
 import { analyzeFit, AnalysisError, type AnalysisPhase } from "./analysis";
 import {
-  consumeLatestCapture, deleteApiKey, deleteJob, deleteResume, loadAssessment,
-  saveApiKey, saveJobConfirmed, saveResume, type StorageAreas,
+  consumeLatestCapture, deleteConnection, deleteJob, deleteResume, loadAssessment,
+  saveConnection, saveJobConfirmed, saveResume, type StorageAreas,
 } from "./storage";
 import { parseResume, ResumeParseError } from "./resume";
 
@@ -24,8 +25,26 @@ export type PanelState =
 function normalState(inputs: AssessmentInputs, notice: string | null = null): PanelState {
   const snapshot = snapshotForInputs(inputs);
   if (!inputs.resume) return { kind: "onboarding-resume", inputs: snapshot, error: null };
-  if (!inputs.apiKey) return { kind: "onboarding-key", inputs: snapshot, error: null };
+  if (!inputs.connection) return { kind: "onboarding-key", inputs: snapshot, error: null };
   return inputs.job ? { kind: "job-ready", inputs: snapshot, notice } : { kind: "waiting-job", inputs: snapshot, notice };
+}
+
+function providerLabel(provider: EvaluationProvider): string {
+  return provider === "vercel-gateway" ? "Vercel AI Gateway" : "TypeSafe direct API";
+}
+
+function providerSelect(active: EvaluationProvider | null): HTMLSelectElement {
+  const select = element("select");
+  select.id = "provider";
+  select.setAttribute("aria-describedby", "provider-help");
+  for (const [value, label] of [["vercel-gateway", "Vercel AI Gateway"], ["typesafe-direct", "TypeSafe direct API"]] as const) {
+    const option = element("option");
+    option.value = value;
+    option.textContent = label;
+    select.append(option);
+  }
+  select.value = active ?? "vercel-gateway";
+  return select;
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string): HTMLElementTagNameMap[K] {
@@ -112,21 +131,29 @@ function renderResumeOnboarding(parent: HTMLElement, state: Extract<PanelState, 
 }
 
 function renderKeyOnboarding(parent: HTMLElement, state: Extract<PanelState, { kind: "onboarding-key" }>): void {
-  parent.append(screenHeader("Step 2 of 2", "Connect AI Gateway", "Resume Fit uses TypeSafe Jev through Vercel AI Gateway to compare your documents."));
+  parent.append(screenHeader("Step 2 of 2", "Connect an evaluator", "Choose Vercel AI Gateway or TypeSafe direct API. Resume Fit uses the selected provider to compare your documents."));
   if (state.error) parent.append(message(state.error, "error"));
   const card = element("section");
   card.className = "card form-card";
-  const label = element("label", "Vercel AI Gateway key");
+  const providerLabelNode = element("label", "Evaluation provider");
+  providerLabelNode.htmlFor = "provider";
+  const provider = providerSelect(state.inputs.provider);
+  const providerHelp = element("p", "Vercel is selected by default. Saving another provider replaces the active session connection.");
+  providerHelp.id = "provider-help";
+  providerHelp.className = "hint";
+  const label = element("label", "API key for the selected provider");
   label.htmlFor = "api-key";
   const key = element("input");
   key.type = "password";
   key.id = "api-key";
   key.autocomplete = "off";
   key.maxLength = 512;
-  key.placeholder = "vck_…";
-  const hint = element("p", "Saved only for this Chrome session. Closing Chrome clears it.");
+  key.placeholder = "Paste your API key";
+  key.setAttribute("aria-describedby", "api-key-help");
+  const hint = element("p", "Saved only for this Chrome session. Closing Chrome clears it. The selected provider receives confirmed resume and job text only when you analyze.");
+  hint.id = "api-key-help";
   hint.className = "hint";
-  card.append(label, key, hint, actionButton("Save and continue", "save-api-key"));
+  card.append(providerLabelNode, provider, providerHelp, label, key, hint, actionButton("Save and continue", "save-api-key"));
   parent.append(card);
 }
 
@@ -147,7 +174,7 @@ function renderWaiting(parent: HTMLElement, state: Extract<PanelState, { kind: "
   }
   const ready = element("section");
   ready.className = "readiness";
-  ready.append(metadataRow("Resume", state.inputs.resume?.fileName ?? "Missing"), metadataRow("AI Gateway", "Connected for this session"));
+  ready.append(metadataRow("Resume", state.inputs.resume?.fileName ?? "Missing"), metadataRow("Evaluator", state.inputs.provider ? `${providerLabel(state.inputs.provider)} connected` : "Missing"));
   parent.append(steps, ready);
 }
 
@@ -269,17 +296,27 @@ function renderSettings(parent: HTMLElement, state: Extract<PanelState, { kind: 
   else resume.append(element("p", "No resume saved."), resumePicker("Add resume"));
   const gateway = element("section");
   gateway.className = "card settings-card";
-  gateway.append(element("h3", "AI Gateway"), element("p", state.inputs.apiKeyPresent ? "Connected for this Chrome session." : "No session key saved."));
-  const label = element("label", state.inputs.apiKeyPresent ? "Replace key" : "Vercel AI Gateway key");
+  gateway.append(element("h3", "Evaluation provider"), element("p", state.inputs.provider ? `${providerLabel(state.inputs.provider)} connected for this Chrome session.` : "No session connection saved."));
+  const provider = providerSelect(state.inputs.provider);
+  const providerLabelNode = element("label", "Evaluation provider");
+  providerLabelNode.htmlFor = "provider";
+  const providerHelp = element("p", "Saving another provider replaces the active session connection.");
+  providerHelp.id = "provider-help";
+  providerHelp.className = "hint";
+  const label = element("label", "API key for the selected provider");
   label.htmlFor = "api-key";
   const key = element("input");
   key.type = "password";
   key.id = "api-key";
   key.autocomplete = "off";
   key.maxLength = 512;
-  key.placeholder = "vck_…";
-  gateway.append(label, key, actionButton(state.inputs.apiKeyPresent ? "Replace session key" : "Save session key", "save-api-key"));
-  if (state.inputs.apiKeyPresent) gateway.append(actionButton("Clear session key", "delete-api-key", "danger-link"));
+  key.placeholder = "Paste your API key";
+  key.setAttribute("aria-describedby", "api-key-help");
+  const hint = element("p", "Saved only for this Chrome session. Closing Chrome clears it. The selected provider receives confirmed resume and job text only when you analyze.");
+  hint.id = "api-key-help";
+  hint.className = "hint";
+  gateway.append(providerLabelNode, provider, providerHelp, label, key, hint, actionButton(state.inputs.provider ? "Replace session connection" : "Save session connection", "save-api-key"));
+  if (state.inputs.provider) gateway.append(actionButton("Clear session connection", "delete-api-key", "danger-link"));
   parent.append(resume, gateway, actionButton("Back", "close-settings", "secondary"));
 }
 
@@ -327,7 +364,7 @@ async function boot(): Promise<void> {
     settingsButton.hidden = !assessment.resume || state.kind === "settings" || state.kind === "onboarding-resume" || state.kind === "onboarding-key";
     settingsButton.setAttribute("aria-expanded", state.kind === "settings" ? "true" : "false");
     if (focusNext) {
-      root.querySelector<HTMLElement>("input, textarea, button, summary")?.focus();
+      root.querySelector<HTMLElement>("input, textarea, select, button, summary")?.focus();
       focusNext = false;
     }
   };
@@ -354,7 +391,7 @@ async function boot(): Promise<void> {
         report = null;
         focusNext = true;
         setState(normalState(assessment, "Job captured from the current tab."), `Job found: ${job.title}`);
-      } else if (capture?.kind === "capture-failed" && assessment.resume && assessment.apiKey) {
+      } else if (capture?.kind === "capture-failed" && assessment.resume && assessment.connection) {
         focusNext = true;
         setState({ kind: "capture-error", inputs: snapshotForInputs(assessment), message: "Open a public job listing or paste the description below." }, "The job page could not be read.");
       }
@@ -404,22 +441,31 @@ async function boot(): Promise<void> {
     if (!action) return;
     try {
       if (action === "save-api-key") {
+        const providerValue = root.querySelector<HTMLSelectElement>("#provider")?.value;
+        if (!isEvaluationProvider(providerValue)) {
+          const inputs = snapshotForInputs(assessment);
+          setState(state.kind === "settings" ? { kind: "settings", inputs, notice: null, error: "Choose an evaluation provider first." } : { kind: "onboarding-key", inputs, error: "Choose an evaluation provider first." }, "An evaluation provider is required.");
+          return;
+        }
         const apiKey = root.querySelector<HTMLInputElement>("#api-key")?.value.trim() ?? "";
         if (!apiKey) {
           const inputs = snapshotForInputs(assessment);
-          setState(state.kind === "settings" ? { kind: "settings", inputs, notice: null, error: "Paste a Vercel AI Gateway key first." } : { kind: "onboarding-key", inputs, error: "Paste a Vercel AI Gateway key first." }, "A key is required.");
+          setState(state.kind === "settings" ? { kind: "settings", inputs, notice: null, error: `Paste a ${providerLabel(providerValue)} API key first.` } : { kind: "onboarding-key", inputs, error: `Paste a ${providerLabel(providerValue)} API key first.` }, "A key is required.");
           return;
         }
-        await saveApiKey(storage, apiKey);
-        assessment = { ...assessment, apiKey };
+        await saveConnection(storage, { provider: providerValue, apiKey });
+        abortAnalysis();
+        report = null;
+        assessment = { ...assessment, connection: { provider: providerValue, apiKey } };
         focusNext = true;
-        setState(state.kind === "settings" ? { kind: "settings", inputs: snapshotForInputs(assessment), notice: "Session key saved.", error: null } : normalState(assessment), "AI Gateway connected for this session.");
+        setState(state.kind === "settings" ? { kind: "settings", inputs: snapshotForInputs(assessment), notice: `${providerLabel(providerValue)} connection saved for this session.`, error: null } : normalState(assessment), `${providerLabel(providerValue)} connected for this session.`);
       } else if (action === "delete-api-key") {
-        await deleteApiKey(storage);
-        assessment = { ...assessment, apiKey: null };
+        await deleteConnection(storage);
+        abortAnalysis();
+        assessment = { ...assessment, connection: null };
         report = null;
         focusNext = true;
-        setState({ kind: "settings", inputs: snapshotForInputs(assessment), notice: "Session key cleared.", error: null }, "Session key cleared.");
+        setState({ kind: "settings", inputs: snapshotForInputs(assessment), notice: "Session connection cleared.", error: null }, "Session connection cleared.");
       } else if (action === "delete-resume") {
         if (!window.confirm("Delete the saved resume text from this browser?")) return;
         await deleteResume(storage);
@@ -455,7 +501,7 @@ async function boot(): Promise<void> {
         setState(normalState(assessment, "Analysis cancelled."), "Analysis cancelled.");
       } else if (action === "analyze") {
         const snapshot = analysisSnapshot(assessment);
-        if (!snapshot || !assessment.apiKey || !assessment.resume || !assessment.job) return;
+        if (!snapshot || !assessment.connection || !assessment.resume || !assessment.job) return;
         abortAnalysis();
         const attemptId = newOpaqueVersion();
         const controller = new AbortController();
@@ -464,7 +510,7 @@ async function boot(): Promise<void> {
         setState({ kind: "analyzing", inputs: snapshotForInputs(assessment), phase: "finding-requirements" }, "Finding job requirements.");
         try {
           const nextReport = await analyzeFit({
-            apiKey: assessment.apiKey, resumeText: assessment.resume.text, jobText: assessment.job.text, signal: controller.signal,
+            connection: assessment.connection, resumeText: assessment.resume.text, jobText: assessment.job.text, signal: controller.signal,
             onPhase: (phase) => { if (analyzeAttemptId === attemptId) setState({ kind: "analyzing", inputs: snapshotForInputs(assessment), phase }, phase === "matching-resume" ? "Matching resume evidence." : "Finding job requirements."); },
           });
           if (analyzeAttemptId !== attemptId || analyzeController !== controller) return;

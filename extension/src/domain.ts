@@ -11,6 +11,13 @@ export const LIMITS = {
 
 export type ResumeFormat = "pdf" | "docx";
 
+export type EvaluationProvider = "vercel-gateway" | "typesafe-direct";
+
+export type EvaluationConnection = Readonly<{
+  provider: EvaluationProvider;
+  apiKey: string;
+}>;
+
 export type OpaqueVersion = string;
 
 export type ResumeDocument = Readonly<{
@@ -33,7 +40,7 @@ export type JobConfirmed = Readonly<{
 export type AssessmentInputs = Readonly<{
   resume: ResumeDocument | null;
   job: JobConfirmed | null;
-  apiKey: string | null;
+  connection: EvaluationConnection | null;
 }>;
 
 export type ResumeMetadata = Readonly<{
@@ -53,7 +60,7 @@ export type JobMetadata = Readonly<{
 export type InputSnapshot = Readonly<{
   resume: ResumeMetadata | null;
   job: JobMetadata | null;
-  apiKeyPresent: boolean;
+  provider: EvaluationProvider | null;
 }>;
 
 export type AnalysisSnapshot = Readonly<{
@@ -170,6 +177,10 @@ export function normalizeForComparison(value: string): string {
   return value.toLocaleLowerCase().replace(/\s+/g, " ").trim();
 }
 
+export function isEvaluationProvider(value: unknown): value is EvaluationProvider {
+  return value === "vercel-gateway" || value === "typesafe-direct";
+}
+
 export function snapshotForInputs(inputs: AssessmentInputs): InputSnapshot {
   return {
     resume: inputs.resume ? {
@@ -184,7 +195,7 @@ export function snapshotForInputs(inputs: AssessmentInputs): InputSnapshot {
       title: inputs.job.title,
       url: inputs.job.url,
     } : null,
-    apiKeyPresent: inputs.apiKey !== null,
+    provider: inputs.connection?.provider ?? null,
   };
 }
 

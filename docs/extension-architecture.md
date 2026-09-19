@@ -16,8 +16,8 @@ The side panel owns the assessment:
 
 1. `panel.ts` consumes the latest capture and shows only its title and source.
 2. `resume.ts` parses a PDF or DOCX file locally. It stores extracted text, not the source file.
-3. The user saves a Vercel AI Gateway key for the current browser session.
-4. `analysis.ts` reports two real phases, calls TypeSafe's Jev evaluation model through Vercel AI Gateway, and builds the report from validated source spans.
+3. The user selects Vercel AI Gateway or TypeSafe direct API and saves its key for the current browser session.
+4. `analysis.ts` reports two real phases, calls the selected TypeSafe Jev evaluation provider, and builds the report from validated source spans.
 5. The report renders one match gauge and four metric bars.
 
 Canceling analysis aborts the in-flight request. The service worker never owns analysis state.
@@ -49,7 +49,7 @@ The build bundles `background.ts` and `panel.ts`. It copies the manifest, side-p
 
 `ResumeDocument` and `JobConfirmed` have independent opaque versions. `crypto.randomUUID()` creates each version. Analysis captures both versions and an in-memory attempt ID. The panel renders a response only when the current versions and attempt ID still match.
 
-Capture and manual paste produce a bounded `JobConfirmed` value. The workflow state is a closed discriminated union. Full resume text, job text, and the Gateway key stay outside render state. A successful resume or job change hides an older report.
+Capture and manual paste produce a bounded `JobConfirmed` value. The workflow state is a closed discriminated union. Full resume text, job text, and the active provider key stay outside render state. A successful resume, job, or provider connection change hides an older report.
 
 `RequirementEvidence` is an internal discriminated union:
 
@@ -64,14 +64,14 @@ The report builder validates every job and resume span against its source text. 
 | --- | --- | --- |
 | Extracted resume text and file metadata | `chrome.storage.local` | Until the user deletes it or removes the extension |
 | Selected job text | `chrome.storage.session` | Current browser session |
-| Vercel AI Gateway key | `chrome.storage.session` | Current browser session |
+| Active provider connection and API key | `chrome.storage.session` | Current browser session |
 | Capture inbox | `chrome.storage.session` | Removed after the panel consumes it |
 
 The extension stores no raw resume file and no report history. The service worker stores no state in globals.
 
 ## Evaluation boundary
 
-The panel uses AI SDK 7's `experimental_evaluate` with `gateway.evaluationModel("typesafe-ai/jev")`. The Gateway provider sends the request to `https://ai-gateway.vercel.sh/v4/ai/evaluation-model` using the user's session-only Gateway key.
+The panel uses AI SDK 7's `experimental_evaluate` with one selected evaluation model. Vercel requests use `createGateway(...).evaluationModel("typesafe-ai/jev")` and send to `https://ai-gateway.vercel.sh/v4/ai/evaluation-model`. Direct requests use `createTypeSafeAi(...).evaluationModel("jev-latest")` and send to `https://api.typesafe.ai/v1/systemone`. Both requests use the selected session-only key.
 
 Code performs the extraction and arithmetic:
 
@@ -93,6 +93,7 @@ Each request has a 15-second timeout and no automatic retries. A fetch boundary 
 | `scripting` | Run the bounded capture function in the active tab |
 | `storage` | Store the assessment inputs according to their retention rules |
 | `https://ai-gateway.vercel.sh/*` | Send a user-requested TypeSafe Jev evaluation through Vercel AI Gateway |
+| `https://api.typesafe.ai/*` | Send a user-requested TypeSafe Jev evaluation through the TypeSafe direct API |
 
 The extension requests no `tabs`, `<all_urls>`, persistent content scripts, remote code, analytics, or application backend.
 

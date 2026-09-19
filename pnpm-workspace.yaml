@@ -1,5 +1,6 @@
 packages:
   - extension
+  - demo
 
 ignoredBuiltDependencies:
   - sharp

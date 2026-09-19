@@ -51,7 +51,7 @@ test("AI SDK sends typed Jev evaluations through Vercel AI Gateway", async () =>
   const { fetchImpl, requests } = strictGatewayFetch();
   const phases = [];
   const report = await analyzeFit({
-    apiKey: "vck_placeholder_for_tests",
+    connection: { provider: "vercel-gateway", apiKey: "vck_placeholder_for_tests" },
     resumeText: "Built TypeScript interfaces",
     jobText: "Build accessible interfaces",
     signal: new AbortController().signal,
@@ -70,13 +70,53 @@ test("AI SDK sends typed Jev evaluations through Vercel AI Gateway", async () =>
   }
 });
 
+test("AI SDK sends direct TypeSafe evaluations and preserves the score", async () => {
+  const { fetchImpl, requests } = strictTypeSafeFetch();
+  const report = await analyzeFit({
+    connection: { provider: "typesafe-direct", apiKey: "typesafe_placeholder_for_tests" },
+    resumeText: "Built TypeScript interfaces",
+    jobText: "Build accessible interfaces",
+    signal: new AbortController().signal,
+    fetchImpl,
+  });
+
+  assert.equal(report.kind, "scored");
+  assert.equal(report.score, 100);
+  assert.equal(requests.length, 2);
+  for (const request of requests) {
+    assert.equal(request.url, "https://api.typesafe.ai/v1/systemone");
+    assert.equal(request.headers.get("authorization"), "Bearer typesafe_placeholder_for_tests");
+    assert.equal(request.body.model, "jev-latest");
+  }
+  assert.equal(requests[0].body.questions.requirement_0.type, "noul");
+  assert.equal(requests[0].body.questions.requirement_0.criteria.true, "An explicit required or preferred work history, skill, responsibility, or formal qualification.");
+});
+
+test("TypeSafe direct authentication failures remain actionable", async () => {
+  const fetchImpl = async () => new Response(JSON.stringify({
+    error: { message: "Invalid API key", type: "authentication_error" },
+  }), { status: 401, headers: { "content-type": "application/json" } });
+
+  await assert.rejects(analyzeFit({
+    connection: { provider: "typesafe-direct", apiKey: "typesafe_invalid_for_test" },
+    resumeText: "Built accessible interfaces",
+    jobText: "Build accessible interfaces",
+    signal: new AbortController().signal,
+    fetchImpl,
+  }), (error) => {
+    assert.equal(error.code, "authentication");
+    assert.match(error.message, /TypeSafe rejected the direct API key/);
+    return true;
+  });
+});
+
 test("Gateway authentication failures remain actionable", async () => {
   const fetchImpl = async () => new Response(JSON.stringify({
     error: { message: "Invalid API key", type: "authentication_error" },
   }), { status: 401, headers: { "content-type": "application/json" } });
 
   await assert.rejects(analyzeFit({
-    apiKey: "vck_invalid_for_test",
+    connection: { provider: "vercel-gateway", apiKey: "vck_invalid_for_test" },
     resumeText: "Built accessible interfaces",
     jobText: "Build accessible interfaces",
     signal: new AbortController().signal,
@@ -94,7 +134,7 @@ test("Gateway customer verification failures remain actionable", async () => {
   }), { status: 403, headers: { "content-type": "application/json" } });
 
   await assert.rejects(analyzeFit({
-    apiKey: "vck_valid_for_test",
+    connection: { provider: "vercel-gateway", apiKey: "vck_valid_for_test" },
     resumeText: "Built accessible interfaces",
     jobText: "Build accessible interfaces",
     signal: new AbortController().signal,
@@ -110,7 +150,7 @@ test("large analyses use two Gateway requests", async () => {
   const { fetchImpl, requests } = strictGatewayFetch();
 
   await analyzeFit({
-    apiKey: "vck_placeholder_for_tests",
+    connection: { provider: "vercel-gateway", apiKey: "vck_placeholder_for_tests" },
     resumeText: "Built TypeScript interfaces",
     jobText: Array.from({ length: 64 }, (_, index) => `Use TypeScript requirement ${index}`).join("\n"),
     signal: new AbortController().signal,
@@ -160,6 +200,25 @@ function strictGatewayFetch(options = {}) {
       throw new Error(`Unexpected question ${key} of type ${question.type}`);
     }));
     return new Response(JSON.stringify({ answers }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  return { fetchImpl, requests };
+}
+
+function strictTypeSafeFetch(options = {}) {
+  const requests = [];
+  const fetchImpl = async function (input, init) {
+    assert.equal(this, globalThis);
+    const body = JSON.parse(init.body);
+    const headers = new Headers(init.headers);
+    requests.push({ url: String(input), body, headers });
+    const answers = Object.fromEntries(Object.entries(body.questions).map(([key, question]) => {
+      if (question.type === "noul") return [key, { type: "noul", noul: options.requirementProbability ?? 0.99 }];
+      if (key.startsWith("importance_")) return [key, strictChoice("required", { required: 0.99, preferred: 0.01 })];
+      if (key.startsWith("metric_")) return [key, strictChoice(options.metric ?? "skillset", strictMetricProbabilities(options.metric))];
+      if (key.startsWith("match_")) return [key, strictChoice(options.evidenceChoice ?? "clear_match", Object.hasOwn(options, "probabilities") ? options.probabilities : strictEvidenceProbabilities())];
+      throw new Error(`Unexpected question ${key} of type ${question.type}`);
+    }));
+    return new Response(JSON.stringify({ model: body.model, answers, usage: { input_tokens: 1, output_tokens: 1 } }), { status: 200, headers: { "content-type": "application/json" } });
   };
   return { fetchImpl, requests };
 }
@@ -252,7 +311,7 @@ test("not-applicable metrics are excluded from the overall denominator", () => {
 test("clear evidence at the .70 threshold earns full credit", async () => {
   const { fetchImpl } = strictGatewayFetch({ probabilities: strictEvidenceProbabilities({ no_match: 0.1, related_only: 0.1, partial_match: 0.1, clear_match: 0.7 }) });
   const report = await analyzeFit({
-    apiKey: "vck_placeholder_for_tests",
+    connection: { provider: "vercel-gateway", apiKey: "vck_placeholder_for_tests" },
     resumeText: "Built TypeScript interfaces for customers",
     jobText: "Use TypeScript for product interfaces",
     signal: new AbortController().signal,
@@ -266,7 +325,7 @@ test("clear evidence at the .70 threshold earns full credit", async () => {
 test("clear evidence at .69 earns only partial credit", async () => {
   const { fetchImpl } = strictGatewayFetch({ probabilities: strictEvidenceProbabilities({ no_match: 0.1, related_only: 0.1, partial_match: 0.11, clear_match: 0.69 }) });
   const report = await analyzeFit({
-    apiKey: "vck_placeholder_for_tests",
+    connection: { provider: "vercel-gateway", apiKey: "vck_placeholder_for_tests" },
     resumeText: "Built TypeScript interfaces for customers",
     jobText: "Use TypeScript for product interfaces",
     signal: new AbortController().signal,
@@ -280,7 +339,7 @@ test("clear evidence at .69 earns only partial credit", async () => {
 test("explicit year thresholds are compared in code", async () => {
   const { fetchImpl } = strictGatewayFetch();
   const report = await analyzeFit({
-    apiKey: "vck_placeholder_for_tests",
+    connection: { provider: "vercel-gateway", apiKey: "vck_placeholder_for_tests" },
     resumeText: "Used TypeScript in product development for 5 years",
     jobText: "8 years of TypeScript product development experience",
     signal: new AbortController().signal,
@@ -294,7 +353,7 @@ test("explicit year thresholds are compared in code", async () => {
 test("missing evidence probabilities fail closed without displaying an excerpt", async () => {
   const { fetchImpl } = strictGatewayFetch({ evidenceChoice: "clear_match", probabilities: undefined });
   const report = await analyzeFit({
-    apiKey: "vck_placeholder_for_tests",
+    connection: { provider: "vercel-gateway", apiKey: "vck_placeholder_for_tests" },
     resumeText: "Built TypeScript interfaces for customers",
     jobText: "Use TypeScript for product interfaces",
     signal: new AbortController().signal,
@@ -311,7 +370,7 @@ test("low-confidence supportive evidence fails closed instead of fabricating rel
     probabilities: { no_match: 0.35, related_only: 0, partial_match: 0.4, clear_match: 0.25 },
   });
   const report = await analyzeFit({
-    apiKey: "vck_placeholder_for_tests",
+    connection: { provider: "vercel-gateway", apiKey: "vck_placeholder_for_tests" },
     resumeText: "Built TypeScript interfaces for customers",
     jobText: "Use TypeScript for product interfaces",
     signal: new AbortController().signal,
@@ -326,7 +385,7 @@ test("malformed Choice probability maps fail at the response boundary", async ()
   const { fetchImpl } = strictGatewayFetch({ probabilities: { no_match: 0.2, related_only: 0.2, partial_match: 0.6 } });
 
   await assert.rejects(analyzeFit({
-    apiKey: "vck_placeholder_for_tests",
+    connection: { provider: "vercel-gateway", apiKey: "vck_placeholder_for_tests" },
     resumeText: "Built TypeScript interfaces for customers",
     jobText: "Use TypeScript for product interfaces",
     signal: new AbortController().signal,
@@ -341,7 +400,7 @@ test("malformed Choice probability maps fail at the response boundary", async ()
 test("zero substantive overlap asks no evidence question and returns no match", async () => {
   const { fetchImpl, requests } = strictGatewayFetch();
   const report = await analyzeFit({
-    apiKey: "vck_placeholder_for_tests",
+    connection: { provider: "vercel-gateway", apiKey: "vck_placeholder_for_tests" },
     resumeText: "JANE DOE\njane@example.com\nEXPERIENCE",
     jobText: "Product Manager",
     signal: new AbortController().signal,
@@ -356,7 +415,7 @@ test("zero substantive overlap asks no evidence question and returns no match", 
 test("Gateway requests use Choice for strict evidence evaluation", async () => {
   const { fetchImpl, requests } = strictGatewayFetch();
   await analyzeFit({
-    apiKey: "vck_placeholder_for_tests",
+    connection: { provider: "vercel-gateway", apiKey: "vck_placeholder_for_tests" },
     resumeText: "Built TypeScript interfaces for customers",
     jobText: "Use TypeScript for product interfaces",
     signal: new AbortController().signal,

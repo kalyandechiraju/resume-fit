@@ -65,6 +65,7 @@ body {
 button,
 input,
 textarea,
+select,
 progress,
 details {
   box-sizing: border-box;
@@ -80,7 +81,8 @@ h4 {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -287,13 +289,15 @@ label {
 
 input,
 textarea,
+select,
 button,
 .button-copy {
   min-block-size: 2.875rem;
 }
 
 input:not([type="file"]),
-textarea {
+textarea,
+select {
   inline-size: 100%;
   border: 1px solid var(--line-strong);
   border-radius: 0.8rem;
@@ -310,7 +314,8 @@ textarea::placeholder {
 }
 
 input:not([type="file"]):focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+select:focus-visible {
   border-color: var(--plum);
   box-shadow: 0 0 0 0.22rem var(--plum-soft);
 }

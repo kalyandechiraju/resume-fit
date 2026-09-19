@@ -1,5 +1,7 @@
 import { createGateway, GatewayError } from "@ai-sdk/gateway";
+import { createTypeSafeAi } from "@ai-sdk/typesafe-ai";
 import {
+  APICallError,
   experimental_evaluate as evaluate,
   type Experimental_EvaluationAnswer as EvaluationAnswer,
   type Experimental_EvaluationQuestion as EvaluationQuestion,
@@ -19,9 +21,11 @@ import {
   type RequirementEvidence,
   type RequirementImportance,
   type SourceSpan,
+  type EvaluationConnection,
 } from "./domain";
 
-const MODEL_ID = "typesafe-ai/jev";
+const GATEWAY_MODEL_ID = "typesafe-ai/jev";
+const TYPESAFE_MODEL_ID = "jev-latest";
 
 export type AnalysisPhase = "finding-requirements" | "matching-resume";
 
@@ -45,6 +49,17 @@ function gatewayAnalysisError(error: unknown): AnalysisError | null {
   if (error.statusCode === 404) return new AnalysisError("service", "The TypeSafe Jev model is unavailable through this Gateway account.");
   if (error.statusCode >= 500) return new AnalysisError("service", "Vercel AI Gateway or TypeSafe is temporarily unavailable.");
   return new AnalysisError("service", `Vercel AI Gateway rejected the request with status ${error.statusCode}.`);
+}
+
+function typesafeAnalysisError(error: unknown): AnalysisError | null {
+  if (!APICallError.isInstance(error)) return null;
+  if (error.statusCode === 401) return new AnalysisError("authentication", "TypeSafe rejected the direct API key. Replace it with an active TypeSafe API key.");
+  if (error.statusCode === 402 || error.statusCode === 403) return new AnalysisError("forbidden", "TypeSafe denied the direct request. Check the TypeSafe account access and billing settings.");
+  if (error.statusCode === 404) return new AnalysisError("service", "The Jev model is unavailable from the TypeSafe direct API.");
+  if (error.statusCode === 422) return new AnalysisError("response-invalid", "TypeSafe rejected the direct request. Check the selected model and evaluation questions.");
+  if (error.statusCode === 429) return new AnalysisError("rate-limit", "TypeSafe rate-limited the direct request. Wait briefly, then try again.");
+  if (error.statusCode === 529 || (error.statusCode !== undefined && error.statusCode >= 500)) return new AnalysisError("service", "TypeSafe is temporarily unavailable. Try again later.");
+  return new AnalysisError("service", `TypeSafe rejected the direct request with status ${error.statusCode ?? "unknown"}.`);
 }
 
 type Question = EvaluationQuestion & (
@@ -106,12 +121,13 @@ function parseChoice<Label extends string>(answers: Answers, key: string, labels
   return { choice: answer.choice, probabilities };
 }
 
-async function responseText(response: Response): Promise<string> {
+async function responseText(response: Response, provider: EvaluationConnection["provider"]): Promise<string> {
+  const service = provider === "vercel-gateway" ? "AI Gateway" : "TypeSafe";
   const length = response.headers.get("content-length");
-  if (length && Number(length) > LIMITS.responseBytes) throw new AnalysisError("response-too-large", "The AI Gateway response was too large.");
+  if (length && Number(length) > LIMITS.responseBytes) throw new AnalysisError("response-too-large", `The ${service} response was too large.`);
   if (!response.body) {
     const text = await response.text();
-    if (new TextEncoder().encode(text).byteLength > LIMITS.responseBytes) throw new AnalysisError("response-too-large", "The AI Gateway response was too large.");
+    if (new TextEncoder().encode(text).byteLength > LIMITS.responseBytes) throw new AnalysisError("response-too-large", `The ${service} response was too large.`);
     return text;
   }
   const reader = response.body.getReader();
@@ -124,7 +140,7 @@ async function responseText(response: Response): Promise<string> {
     bytes += part.value.byteLength;
     if (bytes > LIMITS.responseBytes) {
       await reader.cancel();
-      throw new AnalysisError("response-too-large", "The AI Gateway response was too large.");
+      throw new AnalysisError("response-too-large", `The ${service} response was too large.`);
     }
     chunks.push(decoder.decode(part.value, { stream: true }));
   }
@@ -135,7 +151,7 @@ async function responseText(response: Response): Promise<string> {
 async function evaluateQuestions(args: Readonly<{
   state: EvaluationState;
   questions: Record<string, Question>;
-  apiKey: string;
+  connection: EvaluationConnection;
   signal: AbortSignal;
   fetchImpl: typeof fetch;
 }>): Promise<Answers> {
@@ -148,8 +164,8 @@ async function evaluateQuestions(args: Readonly<{
   const boundedFetch: typeof fetch = async (input, init) => {
     const response = await args.fetchImpl.call(globalThis, input, init);
     try {
-      const text = await responseText(response);
-      if (response.status === 403 && text.includes('"customer_verification_required"')) {
+      const text = await responseText(response, args.connection.provider);
+      if (args.connection.provider === "vercel-gateway" && response.status === 403 && text.includes('"customer_verification_required"')) {
         throw new AnalysisError("forbidden", "Vercel requires a valid payment card before AI Gateway can use free credits.");
       }
       return new Response(response.status === 204 || response.status === 205 || response.status === 304 ? null : text, {
@@ -163,9 +179,11 @@ async function evaluateQuestions(args: Readonly<{
     }
   };
   try {
-    const gateway = createGateway({ apiKey: args.apiKey, fetch: boundedFetch });
+    const model = args.connection.provider === "vercel-gateway"
+      ? createGateway({ apiKey: args.connection.apiKey, fetch: boundedFetch }).evaluationModel(GATEWAY_MODEL_ID)
+      : createTypeSafeAi({ apiKey: args.connection.apiKey, fetch: boundedFetch }).evaluationModel(TYPESAFE_MODEL_ID);
     const result = await evaluate({
-      model: gateway.evaluationModel(MODEL_ID),
+      model,
       state: args.state,
       questions: args.questions,
       abortSignal: controller.signal,
@@ -176,13 +194,15 @@ async function evaluateQuestions(args: Readonly<{
     if (boundaryError) throw boundaryError;
     if (error instanceof AnalysisError) throw error;
     if (args.signal.aborted) throw error;
-    if (controller.signal.aborted) throw new AnalysisError("timeout", "The AI Gateway request timed out.");
+    if (controller.signal.aborted) throw new AnalysisError("timeout", `${args.connection.provider === "vercel-gateway" ? "The AI Gateway" : "The TypeSafe"} request timed out.`);
     if (InvalidResponseDataError.isInstance(error)) {
       throw new AnalysisError("response-invalid", error.message.includes("probabilities") ? "The model returned invalid Choice probabilities." : "The model returned invalid evaluation data.");
     }
-    const gatewayError = gatewayAnalysisError(error);
-    if (gatewayError) throw gatewayError;
-    throw new AnalysisError("network", "The AI Gateway request failed. Check the session key and try again.");
+    const providerError = args.connection.provider === "vercel-gateway" ? gatewayAnalysisError(error) : typesafeAnalysisError(error);
+    if (providerError) throw providerError;
+    throw new AnalysisError("network", args.connection.provider === "vercel-gateway"
+      ? "The AI Gateway request failed. Check the session key and try again."
+      : "The TypeSafe request failed. Check the session key and try again.");
   } finally {
     clearTimeout(timer);
     args.signal.removeEventListener("abort", abort);
@@ -234,7 +254,7 @@ export function makeSourceSpans(text: string, maxSpans = LIMITS.maxSpans): reado
   return unique;
 }
 
-async function classifyRequirements(jobSpans: readonly SourceSpan[], apiKey: string, signal: AbortSignal, fetchImpl: typeof fetch): Promise<readonly Requirement[]> {
+async function classifyRequirements(jobSpans: readonly SourceSpan[], connection: EvaluationConnection, signal: AbortSignal, fetchImpl: typeof fetch): Promise<readonly Requirement[]> {
   const requirements: Requirement[] = [];
   const questions: Record<string, Question> = {};
   for (const [index] of jobSpans.entries()) {
@@ -265,7 +285,7 @@ async function classifyRequirements(jobSpans: readonly SourceSpan[], apiKey: str
       },
     };
   }
-  const answers = await evaluateQuestions({ state: { jobSpans: jobSpans.map((span) => ({ text: span.text })) }, questions, apiKey, signal, fetchImpl });
+  const answers = await evaluateQuestions({ state: { jobSpans: jobSpans.map((span) => ({ text: span.text })) }, questions, connection, signal, fetchImpl });
   for (const [index, span] of jobSpans.entries()) {
     const importance = parseChoice(answers, `importance_${index}`, ["required", "preferred"]);
     const metric = parseChoice(answers, `metric_${index}`, FIT_METRICS.map((item) => item.metric));
@@ -366,7 +386,7 @@ function supportsYearThresholds(requirement: string, resumeEvidence: string): bo
   return demonstrated.length >= required.length && required.every((years, index) => (demonstrated[index] ?? 0) >= years);
 }
 
-async function scoreEvidence(requirements: readonly Requirement[], resumeSpans: readonly SourceSpan[], apiKey: string, signal: AbortSignal, fetchImpl: typeof fetch): Promise<readonly RequirementEvidence[]> {
+async function scoreEvidence(requirements: readonly Requirement[], resumeSpans: readonly SourceSpan[], connection: EvaluationConnection, signal: AbortSignal, fetchImpl: typeof fetch): Promise<readonly RequirementEvidence[]> {
   const jobs: JobEvidence[] = requirements.map((requirement) => ({ requirement, candidates: shortlist(requirement.requirement, resumeSpans), matches: [] }));
   const questions: Record<string, Question> = {};
   const pairs: Pair[] = [];
@@ -387,7 +407,7 @@ async function scoreEvidence(requirements: readonly Requirement[], resumeSpans: 
     }
   }
   if (pairs.length > 0) {
-    const answers = await evaluateQuestions({ state: { pairs: pairs.map((pair) => ({ jobRequirement: pair.job.requirement.requirement.text, resumeEvidence: pair.resume.text })) }, questions, apiKey, signal, fetchImpl });
+    const answers = await evaluateQuestions({ state: { pairs: pairs.map((pair) => ({ jobRequirement: pair.job.requirement.requirement.text, resumeEvidence: pair.resume.text })) }, questions, connection, signal, fetchImpl });
     for (const pair of pairs) {
       const modelDecision = evidenceMatch(parseChoice(answers, pair.key, EVIDENCE_CHOICES));
       const decision: Readonly<{ alignment: Alignment; probability: number }> = modelDecision.alignment === "clear" && !supportsYearThresholds(pair.job.requirement.requirement.text, pair.resume.text)
@@ -502,7 +522,7 @@ export function buildFitReport(args: Readonly<{ jobText: string; resumeText: str
 }
 
 export type AnalyzeFitArgs = Readonly<{
-  apiKey: string;
+  connection: EvaluationConnection;
   resumeText: string;
   jobText: string;
   signal: AbortSignal;
@@ -511,14 +531,14 @@ export type AnalyzeFitArgs = Readonly<{
 }>;
 
 export async function analyzeFit(args: AnalyzeFitArgs): Promise<FitReport> {
-  if (!args.apiKey.trim() || !args.resumeText.trim() || !args.jobText.trim()) throw new AnalysisError("insufficient-input", "Resume, confirmed job text, and API key are required.");
+  if (!args.connection.apiKey.trim() || !args.resumeText.trim() || !args.jobText.trim()) throw new AnalysisError("insufficient-input", "Resume, confirmed job text, and API key are required.");
   const fetchImpl = args.fetchImpl ?? fetch;
   const jobSpans = makeSourceSpans(args.jobText);
   const resumeSpans = makeSourceSpans(args.resumeText);
   args.onPhase?.("finding-requirements");
-  const requirements = await classifyRequirements(jobSpans, args.apiKey, args.signal, fetchImpl);
+  const requirements = await classifyRequirements(jobSpans, args.connection, args.signal, fetchImpl);
   if (requirements.length === 0) return { kind: "insufficient-job-requirements" };
   args.onPhase?.("matching-resume");
-  const evidence = await scoreEvidence(requirements, resumeSpans, args.apiKey, args.signal, fetchImpl);
+  const evidence = await scoreEvidence(requirements, resumeSpans, args.connection, args.signal, fetchImpl);
   return buildFitReport({ jobText: args.jobText, resumeText: args.resumeText, evidence });
 }

@@ -4,8 +4,8 @@
 
 - Resume Fit is a Chrome extension only. Do not add a website, Next.js, React, a server, or a hosted application backend.
 - `extension/` owns the complete product runtime. Build output is `extension/dist`.
-- The extension locally parses one resume, captures or accepts one job description, and evaluates confirmed text with TypeSafe Jev through Vercel AI Gateway.
-- It stores extracted resume text locally. It stores the current job and API key for the browser session. It never stores the source resume file.
+- The extension locally parses one resume, captures or accepts one job description, and evaluates confirmed text with TypeSafe Jev through either Vercel AI Gateway or the TypeSafe direct API.
+- It stores extracted resume text locally. It stores the current job and one active provider connection for the browser session. It never stores the source resume file.
 - Do not claim a live TypeSafe request works until the unpacked extension is verified with a real key.
 
 ## Architecture
@@ -19,9 +19,9 @@
 
 ## Security and privacy
 
-- Keep permissions limited to `activeTab`, `scripting`, `sidePanel`, and `storage`. Keep host access limited to `https://ai-gateway.vercel.sh/*`.
-- Keep extension scripts and assets self-only. `connect-src` may include only `https://ai-gateway.vercel.sh`. Do not add remote code, inline scripts, or inline event handlers.
-- Validate page capture, resume bytes, Chrome storage, and Gateway responses at their trust boundaries. Bound all text and response sizes.
+- Keep permissions limited to `activeTab`, `scripting`, `sidePanel`, and `storage`. Keep host access limited to `https://ai-gateway.vercel.sh/*` and `https://api.typesafe.ai/*`.
+- Keep extension scripts and assets self-only. `connect-src` may include only `https://ai-gateway.vercel.sh` and `https://api.typesafe.ai`. Do not add remote code, inline scripts, or inline event handlers.
+- Validate page capture, resume bytes, Chrome storage, Gateway responses, and TypeSafe responses at their trust boundaries. Bound all text and response sizes.
 - Keep resume text, job text, API keys, request bodies, and response bodies out of logs and test artifacts.
 
 ## Quality
